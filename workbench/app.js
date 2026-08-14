@@ -192,13 +192,18 @@ function loadLocal() {
   state = defaultState();
   state.calMonth = curMonth();
   state.financeMonth = curMonthStr();
+  seeding = true;   // 示例数据不算"用户未同步改动"，不标记 pending
   seed();
+  seeding = false;
 }
 
 /* ============================================================
    云同步（Supabase）
    ============================================================ */
 function saveLocal() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+
+// seeding：seed() 初始化示例数据期间为 true，此时不标记"待同步"
+let seeding = false;
 
 async function initSync() {
   if (!SYNC_CONFIGURED || typeof supabase === 'undefined') {
@@ -212,10 +217,17 @@ async function initSync() {
     if (session) {
       syncUser = session.user;
       setSyncStatus('同步中…', 'syncing');
-      await pullRemote();
-      subscribeRemote();
-      queuePush();
-      setSyncStatus('已同步', 'ok');
+      if (offlinePending) {
+        // 本地有未同步的改动 → 优先把本地改动推上去，不拉取（避免覆盖本地）
+        queuePush();
+        subscribeRemote(); // 仍建立实时订阅；push 成功后 pending 清除，之后正常拉取
+      } else {
+        // 本地干净 → 拉取云端最新；若云端为空（首次）则把本地推上去
+        const pulled = await pullRemote();
+        subscribeRemote();
+        if (pulled) setSyncStatus('已同步', 'ok');
+        else queuePush();
+      }
     } else {
       setSyncStatus('未登录', '');
     }
@@ -227,31 +239,52 @@ async function initSync() {
 }
 
 async function pullRemote() {
-  if (!sb || !syncUser) return;
+  if (!sb || !syncUser) return false;
   const { data, error } = await sb
     .from('workbench_state')
     .select('data')
     .eq('user_id', syncUser.id)
     .maybeSingle();
-  if (error) { console.warn('pull failed', error); return; }
+  if (error) { console.warn('pull failed', error); return false; }
   if (data && data.data) {
+    // 本地有未同步改动时，绝不用云端覆盖本地（防止丢离线新增）
+    if (offlinePending) return false;
     state = Object.assign(defaultState(), data.data);
+    ensureArrays();
+    migrateState();
+    // 补默认值：防止云端旧数据缺少字段导致渲染崩溃
+    if (!state.calMonth) state.calMonth = curMonth();
+    if (!state.financeMonth) state.financeMonth = curMonthStr();
+    if (!state.habitMonth) state.habitMonth = curMonthStr();
     saveLocal();
+    return true; // 拉到云端数据并已覆盖本地
   }
+  return false; // 云端无数据
 }
 
 function queuePush() {
   if (!sb || !syncUser) return;
   clearTimeout(pushTimer);
   setSyncStatus('同步中…', 'syncing');
+  // 预标记：只要有改动待推送，就记为"未确认同步"。
+  // 这样即使页面在 debounce 窗口内被关闭，标记也已持久化，
+  // 下次打开会优先 push 本地改动而不是用云端覆盖。
+  setOfflinePending(true);
   pushTimer = setTimeout(pushRemote, 700);
 }
 
 /* ---------- 离线暂存 / 恢复同步 ----------
-   offlinePending：本地有未同步改动时为 true。
+   offlinePending：本地有未同步改动时为 true（持久化到 localStorage，刷新后仍有效）。
    规则：离线时改动只存 localStorage（不覆盖云端）；恢复网络后弹出提示条，
    用户确认后再 push；有未同步改动期间不拉取远程（避免本地改动被覆盖）。 */
 let offlinePending = false;
+function setOfflinePending(v) {
+  offlinePending = v;
+  try { localStorage.setItem('wb_offline_pending', v ? '1' : ''); } catch (e) {}
+}
+function loadOfflinePending() {
+  try { offlinePending = localStorage.getItem('wb_offline_pending') === '1'; } catch (e) {}
+}
 function showSyncBanner() {
   const b = document.getElementById('syncBanner');
   if (b) b.style.display = 'flex';
@@ -274,11 +307,11 @@ async function pushRemote() {
   } catch (e) { error = e; }
   suppressRemote = false;
   if (error) {
-    offlinePending = true;
+    setOfflinePending(true);
     setSyncStatus('离线，改动已存本地', 'err');
     if (console && console.warn) console.warn('push failed', error);
   } else {
-    offlinePending = false;
+    setOfflinePending(false);
     hideSyncBanner();
     setSyncStatus('已同步', 'ok');
   }
@@ -406,10 +439,16 @@ async function doAuth() {
     syncUser = sess.user;
     closeAuthModal();
     setSyncStatus('同步中…', 'syncing');
-    await pullRemote();
-    subscribeRemote();
-    queuePush();
-    setSyncStatus('已同步', 'ok');
+    if (offlinePending) {
+      // 本地有未同步改动 → 优先推送本地，不拉取覆盖
+      queuePush();
+      subscribeRemote();
+    } else {
+      const pulled = await pullRemote();
+      subscribeRemote();
+      if (pulled) setSyncStatus('已同步', 'ok');
+      else queuePush(); // 云端为空（首次）→ 把本地推上去
+    }
     renderAuthArea();
     render();
   } catch (e) {
@@ -426,6 +465,9 @@ async function doLogout() {
 
 function saveState() {
   saveLocal();
+  // 任何数据改动都标记"待同步"（seed 初始化除外），push 成功后再清除。
+  // 这样无论页面何时关闭、是否登录、是否离线，本地改动都不会被云端覆盖丢失。
+  if (!seeding) setOfflinePending(true);
   queuePush();
 }
 
@@ -534,12 +576,15 @@ function renderNav() {
   nav.innerHTML = html;
 }
 
-// 模块切换防抖锁：防止移动端幽灵点击/双击导致误切到相邻模块
-let switchLock = false;
+// 模块切换防护：600ms 内切到"不同"模块视为误触/幽灵点击，忽略。
+// （正常操作不会 0.6 秒内连点两个不同导航；同模块重复点不受影响）
+let lastSwitchKey = null;
+let lastSwitchTime = 0;
 function switchModule(key) {
-  if (switchLock) return;               // 400ms 内的重复点击直接忽略
-  switchLock = true;
-  setTimeout(() => { switchLock = false; }, 400);
+  const t = Date.now();
+  if (key !== lastSwitchKey && t - lastSwitchTime < 600) return;
+  lastSwitchKey = key;
+  lastSwitchTime = t;
   state.activeModule = key;
   // 多选状态属于单个视图，切换模块时清空，避免残留勾选框
   if (taskUI.multi.active) taskUI.multi = { view: null, active: false, sel: {} };
@@ -3202,6 +3247,7 @@ function seed() {
    ============================================================ */
 function init() {
   loadLocal();
+  loadOfflinePending(); // 恢复离线未同步标记（防止刷新后 pull 覆盖本地改动）
   initSync().then(() => {
     renderAuthArea();
     render();
