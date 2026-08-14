@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Canming's Life Projects</title>
+  <meta name="theme-color" content="#F97316">
+  <meta name="description" content="科研与生活的自我管理工作台">
+  <!-- PWA -->
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Canming's">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="mobile.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo">⚡</div>
+        <div class="brand-text">
+          <div class="brand-title">Canming's</div>
+          <div class="brand-sub">Life Projects</div>
+        </div>
+      </div>
+      <nav class="nav" id="nav"></nav>
+      <div class="auth-area" id="authArea"></div>
+      <div class="sidebar-foot" id="syncFoot">仅本地存储</div>
+    </aside>
+    <main class="main" id="main"></main>
+  </div>
+
+  <!-- 移动端底部导航 + 更多抽屉（手机端显示） -->
+  <nav class="mobile-nav" id="mobileNav"></nav>
+  <div class="drawer-mask" id="drawerMask" onclick="if(event.target===this)closeDrawer()">
+    <div class="drawer-panel" id="drawerPanel"></div>
+  </div>
+
+  <!-- 离线恢复同步提示条 -->
+  <div class="sync-banner" id="syncBanner">
+    <span>📶 网络已恢复，有离线改动待同步</span>
+    <button onclick="doPendingSync()">立即同步</button>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <div id="authModal"></div>
+  <script src="app.js"></script>
+</body>
+</html>
