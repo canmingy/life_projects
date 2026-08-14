@@ -47,6 +47,12 @@
 }
 .drawer-mask.open .drawer-panel { transform: translateX(0); }
 .drawer-head { font-size: 17px; font-weight: 800; margin-bottom: 4px; }
+.drawer-auth {
+  margin: 0 0 10px;
+  padding: 10px 10px;
+  border-bottom: 1px solid var(--border-2);
+}
+.drawer-auth .auth-btn { width: 100%; }
 .drawer-group {
   font-size: 11px; font-weight: 700; color: var(--text-3);
   margin: 16px 0 4px; letter-spacing: .08em;

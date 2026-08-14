@@ -308,7 +308,7 @@ function renderAuthArea() {
     return;
   }
   if (syncUser) {
-    el.innerHTML = `
+    const h = `
       <div class="auth-user">
         <div class="au-email">${escapeHtml(syncUser.email || '已登录')}</div>
         <div class="auth-row">
@@ -317,8 +317,18 @@ function renderAuthArea() {
           <button class="auth-link" onclick="doLogout()">退出</button>
         </div>
       </div>`;
+    el.innerHTML = h;
+    const da = document.getElementById('drawerAuth');
+    if (da) da.innerHTML = `
+      <div class="auth-user">
+        <div class="au-email">${escapeHtml(syncUser.email || '已登录')}</div>
+        <div class="auth-row"><button class="auth-link" onclick="doLogout()">退出登录</button></div>
+      </div>`;
   } else {
-    el.innerHTML = `<button class="auth-btn" onclick="openAuthModal()">☁️ 登录同步</button>`;
+    const h = `<button class="auth-btn" onclick="openAuthModal()">☁️ 登录同步</button>`;
+    el.innerHTML = h;
+    const da = document.getElementById('drawerAuth');
+    if (da) da.innerHTML = h;
   }
   applySyncStatus();
 }
@@ -484,13 +494,14 @@ function setupMobileNav() {
   }
   const panel = document.getElementById('drawerPanel');
   if (panel) {
-    panel.innerHTML = `<div class="drawer-head">全部模块</div>` +
+    panel.innerHTML = `<div id="drawerAuth" class="drawer-auth"></div><div class="drawer-head">全部模块</div>` +
       NAV_GROUPS.map(g =>
         `<div class="drawer-group">${g.group}</div>` +
         g.items.map(m => `<button class="drawer-item" onclick="closeDrawer();switchModule('${m.key}')">${m.ico} ${m.label}</button>`).join('')
       ).join('');
   }
   updateMobileNav();
+  renderAuthArea(); // 填充抽屉顶部的登录/同步入口
 }
 function updateMobileNav() {
   document.querySelectorAll('.mn-item[data-key]').forEach(el => {

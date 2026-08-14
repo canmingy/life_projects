@@ -37,7 +37,9 @@
   <!-- 移动端底部导航 + 更多抽屉（手机端显示） -->
   <nav class="mobile-nav" id="mobileNav"></nav>
   <div class="drawer-mask" id="drawerMask" onclick="if(event.target===this)closeDrawer()">
-    <div class="drawer-panel" id="drawerPanel"></div>
+    <div class="drawer-panel" id="drawerPanel">
+      <div id="drawerAuth" class="drawer-auth"></div>
+    </div>
   </div>
 
   <!-- 离线恢复同步提示条 -->
