@@ -33,6 +33,7 @@ const NAV_GROUPS = [
     { key: 'literature',label: '文献管理', ico: '📚' },
     { key: 'goals',     label: '年度目标', ico: '🎯' },
     { key: 'backup',    label: '数据备份', ico: '💾' },
+    { key: 'share',     label: '分享',     ico: '🔗' },
   ]},
   { group: '生活', items: [
     { key: 'notes',   label: '笔记手账', ico: '📝' },
@@ -533,7 +534,12 @@ function renderNav() {
   nav.innerHTML = html;
 }
 
+// 模块切换防抖锁：防止移动端幽灵点击/双击导致误切到相邻模块
+let switchLock = false;
 function switchModule(key) {
+  if (switchLock) return;               // 400ms 内的重复点击直接忽略
+  switchLock = true;
+  setTimeout(() => { switchLock = false; }, 400);
   state.activeModule = key;
   // 多选状态属于单个视图，切换模块时清空，避免残留勾选框
   if (taskUI.multi.active) taskUI.multi = { view: null, active: false, sel: {} };
@@ -570,6 +576,7 @@ function render() {
     goals: renderGoals,
     literature: renderLiterature,
     backup: renderBackup,
+    share: renderShare,
   };
   (map[state.activeModule] || renderDashboard)();
   updateMobileNav();
@@ -2915,6 +2922,145 @@ function renderBackup() {
       </div>
       <p class="backup-note">导出文件保存在本机下载目录，可通过 AirDrop 在 iPhone / Mac / Windows 之间传递实现手动同步。升级后旧数据会自动迁移，不会丢失。</p>
     </div>`;
+}
+
+/* ============================================================
+   只读分享（第三部分）
+   —— 服务端快照 + 随机 token；只读页面 share.html 仅调 wb_get_share
+   ============================================================ */
+const SHARE_MODULES = [
+  { key: 'projects', label: '项目概览', ico: '📁' },
+  { key: 'progress', label: '项目进度', ico: '📈' },
+  { key: 'goals',    label: '年度目标', ico: '🎯' },
+  { key: 'culture',  label: '文化生活', ico: '🎭' },
+];
+async function shareRpc(name, params) {
+  if (!sb) throw new Error('云同步未初始化，请先登录');
+  const { data, error } = await sb.rpc(name, params || {});
+  if (error) throw new Error(error.message || error.details || '调用失败');
+  return data;
+}
+function shareLinkFor(token) {
+  const base = location.origin + location.pathname.replace(/index\.html$/, '');
+  return base + 'share.html?t=' + token;
+}
+function renderShare() {
+  const main = document.getElementById('main');
+  if (!syncUser) {
+    main.innerHTML = `
+      <div class="view-head"><div><div class="view-title">🔗 只读分享</div>
+        <div class="view-sub">把项目概览 / 项目进度 / 年度目标 / 文化生活做成只读链接给别人看</div></div></div>
+      <div class="card card-pad"><div class="empty"><span class="emoji">🔒</span>请先登录（☁️ 登录同步）后再创建分享</div></div>`;
+    return;
+  }
+  main.innerHTML = `
+    <div class="view-head">
+      <div><div class="view-title">🔗 只读分享</div>
+        <div class="view-sub">服务端生成过滤快照 + 随机链接；对方只能看，改不了任何数据</div></div>
+      <button class="btn btn-primary" onclick="shareCreate()">创建分享</button>
+    </div>
+
+    <div class="card card-pad" style="margin-bottom:16px;">
+      <div class="fld">分享标题</div>
+      <input type="text" class="input" id="shTitle" placeholder="如：博士申请进度（给老师看）" maxlength="60" style="margin-bottom:10px;">
+      <div class="fld">选择要分享的模块（其余数据不会进入分享快照）</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 10px;">
+        ${SHARE_MODULES.map(m => `<label class="sh-chk"><input type="checkbox" value="${m.key}" checked> ${m.ico} ${m.label}</label>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <div class="fld" style="margin:0;">有效期</div>
+        <select class="select" id="shExpiry" style="width:140px;">
+          <option value="0">永久有效</option>
+          <option value="1">1 天</option>
+          <option value="7" selected>7 天</option>
+          <option value="30">30 天</option>
+          <option value="90">90 天</option>
+        </select>
+        <span style="color:var(--text-3);font-size:12px;">分享后随时可暂停 / 撤销</span>
+      </div>
+    </div>
+
+    <div class="card card-pad">
+      <div class="card-head" style="padding:0 0 12px;border:none;"><h3>我的分享</h3></div>
+      <div id="shareList"><div class="empty">加载中…</div></div>
+    </div>`;
+  refreshShareList();
+}
+async function refreshShareList() {
+  const box = document.getElementById('shareList');
+  if (!box) return;
+  try {
+    const list = await shareRpc('wb_list_shares');
+    if (!Array.isArray(list) || !list.length) {
+      box.innerHTML = '<div class="empty">还没有创建过分享</div>';
+      return;
+    }
+    const mlabel = k => (SHARE_MODULES.find(m => m.key === k) || {}).label || k;
+    box.innerHTML = list.map(s => {
+      const st = s.revoked
+        ? '<span class="badge b-red">已撤销</span>'
+        : s.paused
+          ? '<span class="badge b-amber">已暂停</span>'
+          : '<span class="badge b-green">生效中</span>';
+      const mods = (s.modules || []).map(m => `<span class="badge b-orange" style="font-size:10px;">${escapeHtml(mlabel(m))}</span>`).join(' ');
+      const exp = s.expires_at ? `· 过期 ${fmtDate(s.expires_at)}` : '· 永久有效';
+      const btns = [];
+      if (!s.revoked) {
+        btns.push(`<button class="btn btn-ghost btn-sm" onclick="shareCopy('${s.token}')">📋 复制链接</button>`);
+        btns.push(`<button class="btn btn-ghost btn-sm" onclick="shareTogglePause('${s.token}',${s.paused})">${s.paused ? '▶ 恢复' : '⏸ 暂停'}</button>`);
+        btns.push(`<button class="btn btn-danger-ghost btn-sm" onclick="shareRevoke('${s.token}')">⛔ 撤销</button>`);
+      }
+      btns.push(`<button class="btn btn-danger-ghost btn-sm" onclick="shareDelete('${s.token}')">🗑 删除</button>`);
+      return `<div class="sh-row">
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <b>${escapeHtml(s.title)}</b>${st}
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:5px;">
+            ${mods}<span class="cul-dim">创建 ${fmtDateTime(s.created_at)} ${exp}</span>
+          </div>
+          <div class="cul-dim" style="margin-top:4px;word-break:break-all;">${escapeHtml(shareLinkFor(s.token))}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;justify-content:flex-end;">${btns.join('')}</div>
+      </div>`;
+    }).join('');
+  } catch (e) {
+    box.innerHTML = `<div class="empty">加载失败：${escapeHtml(e.message)}</div>`;
+  }
+}
+async function shareCreate() {
+  const title = (document.getElementById('shTitle').value || '').trim();
+  const modules = [...document.querySelectorAll('.sh-chk input:checked')].map(el => el.value);
+  if (!modules.length) { alert('请至少选择一个要分享的模块'); return; }
+  const days = parseInt(document.getElementById('shExpiry').value) || 0;
+  try {
+    const res = await shareRpc('wb_create_share', { title, modules, expires_in_days: days || null });
+    const link = shareLinkFor(res.token);
+    await navigator.clipboard.writeText(link).catch(() => {});
+    alert('分享已创建，链接已复制到剪贴板：\n' + link);
+    refreshShareList();
+  } catch (e) {
+    alert('创建失败：' + e.message);
+  }
+}
+async function shareCopy(token) {
+  const link = shareLinkFor(token);
+  try { await navigator.clipboard.writeText(link); alert('链接已复制：\n' + link); }
+  catch (e) { prompt('复制这个链接：', link); }
+}
+async function shareTogglePause(token, paused) {
+  try { await shareRpc('wb_pause_share', { token, paused: !paused }); refreshShareList(); }
+  catch (e) { alert('操作失败：' + e.message); }
+}
+async function shareRevoke(token) {
+  if (!confirm('永久撤销该分享？撤销后链接立即失效且不可恢复。')) return;
+  try { await shareRpc('wb_revoke_share', { token }); refreshShareList(); }
+  catch (e) { alert('操作失败：' + e.message); }
+}
+async function shareDelete(token) {
+  if (!confirm('删除该分享记录？')) return;
+  try { await shareRpc('wb_delete_share', { token }); refreshShareList(); }
+  catch (e) { alert('操作失败：' + e.message); }
 }
 
 /* ============================================================

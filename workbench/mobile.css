@@ -3,6 +3,9 @@
    —— 底部导航 / 更多抽屉 / 同步提示条 / 安全区
    ============================================================ */
 
+/* 消除 iOS 点击 300ms 延迟与双击缩放（防止幽灵点击误触相邻按钮） */
+button, .mn-item, .drawer-item, .btn, .f-btn, .cul-card, .exec-chk, .q-check { touch-action: manipulation; }
+
 /* 底部导航（仅手机显示） */
 .mobile-nav { display: none; }
 @media (max-width: 820px) {

@@ -1,0 +1,23 @@
+/* ============================================================
+   只读分享（第三阶段）—— 分享管理页 / 分享页通用样式
+   ============================================================ */
+.sh-chk {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--border); border-radius: 20px;
+  padding: 6px 12px; font-size: 13px; color: var(--text-2);
+  cursor: pointer; background: #fff; user-select: none;
+}
+.sh-chk:has(input:checked) { background: var(--orange-lighter); border-color: var(--orange); color: var(--orange-dark); font-weight: 600; }
+.sh-chk input { accent-color: var(--orange); }
+
+.sh-row {
+  display: flex; gap: 12px; align-items: center; justify-content: space-between;
+  padding: 13px 4px; border-bottom: 1px solid var(--border-2); flex-wrap: wrap;
+}
+.sh-row:last-child { border-bottom: none; }
+
+/* 分享页（share.html） */
+.share-wrap { max-width: 960px; margin: 0 auto; padding: 30px 20px 60px; }
+.share-sec { font-size: 16px; font-weight: 800; margin: 26px 0 12px; color: var(--text); }
+.share-sec:first-of-type { margin-top: 6px; }
+@media (max-width: 820px) { .share-wrap { padding: 20px 14px 40px; } }
