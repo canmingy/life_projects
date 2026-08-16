@@ -618,7 +618,15 @@ function setupMobileNav() {
   }
   const panel = document.getElementById('drawerPanel');
   if (panel) {
-    panel.innerHTML = `<div id="drawerAuth" class="drawer-auth"></div><div class="drawer-head">全部模块</div>` +
+    panel.innerHTML = `<div id="drawerAuth" class="drawer-auth"></div>
+      <div class="theme-toggle" style="margin:0 0 10px;" onclick="toggleTheme()">
+        <span id="themeIconDrawer">🌙</span> <span id="themeLabelDrawer">深色模式</span>
+      </div>
+      <div class="search-wrap search-wrap-drawer">
+        <input class="search-input" id="drawerSearch" placeholder="🔍 搜索…" autocomplete="off" oninput="renderDrawerSearch()" onfocus="renderDrawerSearch()">
+        <div class="search-results" id="drawerSearchResults"></div>
+      </div>
+      <div class="drawer-head">全部模块</div>` +
       NAV_GROUPS.map(g =>
         `<div class="drawer-group">${g.group}</div>` +
         g.items.map(m => `<button class="drawer-item" onclick="closeDrawer();switchModule('${m.key}')">${m.ico} ${m.label}</button>`).join('')
@@ -883,11 +891,11 @@ function renderDashProjectTree() {
       });
     }
     return `<div class="dash-proj">
-      <div class="dp-head" onclick="toggleDashGroup('${p.id}')">
-        <span class="tg-arrow">${open ? '▾' : '▸'}</span>
-        <span class="pc-code">${escapeHtml(p.code)}</span>
+      <div class="dp-head">
+        <span class="tg-arrow" onclick="toggleDashGroup('${p.id}')">${open ? '▾' : '▸'}</span>
+        <span class="pc-code dp-code-link" onclick="goProject('${p.id}')" title="打开「${escapeHtml(p.title || p.code)}」项目详情">${escapeHtml(p.code)}</span>
         ${p.blocked ? '<span class="badge b-red">阻塞</span>' : ''}
-        <span class="dp-sum">阶段：${escapeHtml(p.phase || '—')} · 下一步：${escapeHtml(p.nextStep || '—')} · 截止：${p.deadline ? fmtDate(p.deadline) : '—'} · 最近完成：${recent ? escapeHtml(recent.name) : '—'} · 已完成 ${done}/${total}</span>
+        <span class="dp-sum" onclick="toggleDashGroup('${p.id}')" style="flex:1;cursor:pointer;">阶段：${escapeHtml(p.phase || '—')} · 下一步：${escapeHtml(p.nextStep || '—')} · 截止：${p.deadline ? fmtDate(p.deadline) : '—'} · 最近完成：${recent ? escapeHtml(recent.name) : '—'} · 已完成 ${done}/${total}</span>
       </div>
       ${body}
     </div>`;
@@ -1132,6 +1140,10 @@ function statusOptions(sel) {
   return ['未开始', '进行中', '等待', '阻塞', '已完成']
     .map(s => `<option ${s === sel ? 'selected' : ''}>${s}</option>`).join('');
 }
+function projStatusOptions(sel) {
+  return ['进行中', '待启动', '已完成', '暂停']
+    .map(s => `<option ${s === sel ? 'selected' : ''}>${s}</option>`).join('');
+}
 function quadOptions2(sel) {
   return [['', '（无）'], ['q1', '紧急且重要'], ['q2', '不紧急但重要'],
           ['q3', '紧急不重要'], ['q4', '不紧急不重要']]
@@ -1272,15 +1284,18 @@ function renderProjectDetail(p) {
   return `
     <div class="card card-pad">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
-        <div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <span class="pc-code" style="font-size:18px;font-weight:800;font-family:Consolas,monospace;">${escapeHtml(p.code)}</span>
-          <span class="badge b-orange" style="margin-left:8px;">${escapeHtml(p.label)}</span>
-          <span class="badge b-gray" style="margin-left:4px;">${escapeHtml(p.status)}</span>
+          <input class="input pd-label-input" list="labelPresets" value="${escapeHtml(p.label || '')}" onchange="setProjField('${p.id}','label',this.value)" placeholder="标签（长期/短期/重要）" title="项目标签，可自定义">
+          <select class="exec-sel" onchange="setProjField('${p.id}','status',this.value)" title="项目状态">${projStatusOptions(p.status)}</select>
           ${p.blocked ? '<span class="badge b-red">阻塞</span>' : ''}
         </div>
         <button class="btn btn-danger-ghost btn-sm" onclick="delProject('${p.id}')">删除项目</button>
       </div>
-      <div class="pd-desc">${escapeHtml(p.description || '（暂无描述）')}</div>
+      <input class="input" value="${escapeHtml(p.description || '')}" onchange="setProjField('${p.id}','description',this.value)" placeholder="项目简介（可选）" style="margin-bottom:10px;">
+      <datalist id="labelPresets">
+        <option value="长期"></option><option value="短期"></option><option value="重要"></option><option value="A1主攻"></option><option value="普通"></option>
+      </datalist>
 
       <div class="proj-info">
         <label>当前阶段<input class="input" value="${escapeHtml(p.phase || '')}" onchange="setProjField('${p.id}','phase',this.value)" placeholder="如 数据分析确认"></label>
@@ -1420,6 +1435,89 @@ function selectProject(id) {
   state.selectedProjectId = id;
   saveState();
   renderProjects();
+}
+// 从概览"项目进度"跳转到项目页并定位到指定项目
+function goProject(pid) {
+  state.selectedProjectId = pid;
+  state.activeModule = 'projects';
+  if (taskUI.multi.active) taskUI.multi = { view: null, active: false, sel: {} };
+  saveState();
+  render();
+  window.scrollTo(0, 0);
+}
+
+/* ---------- 全局搜索 ---------- */
+function doSearch(kw) {
+  kw = (kw || '').trim().toLowerCase();
+  if (!kw) return [];
+  const hit = (...vals) => vals.some(v => (v || '').toLowerCase().includes(kw));
+  const out = [];
+  state.projects.forEach(p => {
+    if (hit(p.code, p.title, p.label, p.description)) {
+      out.push({ ico: '📁', type: '项目', text: `${p.code} ${p.title || ''}`, sub: p.status, go: 'project', id: p.id });
+    }
+  });
+  state.tasks.forEach(t => {
+    if (hit(t.name, t.note)) {
+      const p = state.projects.find(x => x.id === t.projectId);
+      out.push({ ico: '✓', type: t.level === 2 ? '任务组' : '任务', text: t.name, sub: p ? p.code : '个人', go: p ? 'project' : 'module', id: p ? p.id : 'todos' });
+    }
+  });
+  state.notes.forEach(n => {
+    if (hit(n.content, n.type)) {
+      out.push({ ico: '📝', type: '笔记', text: n.content.slice(0, 50), sub: n.type, go: 'module', id: 'notes' });
+    }
+  });
+  state.literature.forEach(l => {
+    if (hit(l.title, l.authors, l.journal, l.doi, l.conclusion)) {
+      out.push({ ico: '📚', type: '文献', text: l.title, sub: l.authors, go: 'module', id: 'literature' });
+    }
+  });
+  state.goals.forEach(g => {
+    if (hit(g.title)) {
+      out.push({ ico: '🎯', type: '目标', text: g.title, sub: g.status, go: 'module', id: 'goals' });
+    }
+  });
+  state.cultural.forEach(c => {
+    if (hit(c.name)) {
+      out.push({ ico: '🎭', type: '文化', text: c.name, sub: c.type, go: 'module', id: 'culture' });
+    }
+  });
+  return out.slice(0, 20);
+}
+function renderSearchTo(input, box) {
+  const kw = (input.value || '').trim();
+  if (!kw) { box.innerHTML = ''; box.style.display = 'none'; return; }
+  const results = doSearch(kw);
+  window.__lastSearchResults = results;
+  if (!results.length) { box.innerHTML = '<div class="sr-empty">无匹配结果</div>'; box.style.display = 'block'; return; }
+  box.innerHTML = results.map((r, i) => `
+    <div class="sr-item" onclick="goSearchItem(${i})">
+      <span class="sr-ico">${r.ico}</span>
+      <div class="sr-body"><div class="sr-text">${escapeHtml(r.text)}</div><div class="sr-sub">${r.type}${r.sub ? ' · ' + escapeHtml(r.sub) : ''}</div></div>
+    </div>`).join('');
+  box.style.display = 'block';
+}
+function renderSearchResults() {
+  const input = document.getElementById('globalSearch');
+  const box = document.getElementById('searchResults');
+  if (input && box) renderSearchTo(input, box);
+}
+function renderDrawerSearch() {
+  const input = document.getElementById('drawerSearch');
+  const box = document.getElementById('drawerSearchResults');
+  if (input && box) renderSearchTo(input, box);
+}
+function goSearchItem(i) {
+  const r = (window.__lastSearchResults || [])[i];
+  if (!r) return;
+  if (r.go === 'project') goProject(r.id);
+  else switchModule(r.id);
+  const gs = document.getElementById('globalSearch'); if (gs) gs.value = '';
+  const ds = document.getElementById('drawerSearch'); if (ds) ds.value = '';
+  const sr = document.getElementById('searchResults'); if (sr) { sr.innerHTML = ''; sr.style.display = 'none'; }
+  const dr = document.getElementById('drawerSearchResults'); if (dr) { dr.innerHTML = ''; dr.style.display = 'none'; }
+  closeDrawer();
 }
 
 function addProject() {
@@ -3114,7 +3212,123 @@ function renderBackup() {
         <button class="btn btn-danger-ghost" onclick="clearAllData()">🗑 清空数据</button>
       </div>
       <p class="backup-note">导出文件保存在本机下载目录，可通过 AirDrop 在 iPhone / Mac / Windows 之间传递实现手动同步。升级后旧数据会自动迁移，不会丢失。</p>
+    </div>
+    <div class="card card-pad" style="margin-top:16px;">
+      <div class="card-head" style="padding:0 0 12px;border:none;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <h3>📄 一键周报 / 月报</h3>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost btn-sm" onclick="genReport('week')">生成周报</button>
+          <button class="btn btn-ghost btn-sm" onclick="genReport('month')">生成月报</button>
+        </div>
+      </div>
+      <textarea class="input" id="reportArea" rows="14" placeholder="点击上方按钮，自动汇总本周 / 本月完成的任务、项目进展、进度记录…"></textarea>
+      <div style="display:flex;justify-content:flex-end;margin-top:8px;">
+        <button class="btn btn-primary btn-sm" onclick="copyReport()">📋 复制报告</button>
+      </div>
     </div>`;
+}
+
+/* ---------- 一键周报 / 月报 ---------- */
+function fmtDateYMD(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function generateReport(kind) {
+  const isWeek = kind === 'week';
+  const label = isWeek ? '周' : '月';
+  const now = new Date();
+  const td = todayStr();
+  let startStr;
+  if (isWeek) {
+    const day = now.getDay() || 7; // 周日 = 7
+    const s = new Date(now);
+    s.setDate(now.getDate() - (day - 1));
+    startStr = fmtDateYMD(s);
+  } else {
+    startStr = fmtDateYMD(new Date(now.getFullYear(), now.getMonth(), 1));
+  }
+
+  const doneTasks = state.tasks.filter(t => t.doneDate && t.doneDate >= startStr && t.doneDate <= td);
+  const logs = state.progressLogs.filter(l => l.date && l.date >= startStr && l.date <= td);
+  const active = state.projects.filter(p => p.status === '进行中');
+  const wp = isWeek ? getWeeklyPlan() : null;
+
+  const L = [];
+  L.push(`【本${label}工作汇报】`);
+  L.push(`（${startStr} ~ ${td}）`);
+  L.push('');
+  L.push(`一、本${label}完成任务（${doneTasks.length} 项）`);
+  if (doneTasks.length) {
+    doneTasks.forEach(t => {
+      const p = state.projects.find(x => x.id === t.projectId);
+      L.push(`- ${p ? '[' + p.code + '] ' : ''}${t.name}`);
+    });
+  } else { L.push('- （无）'); }
+  L.push('');
+
+  L.push(`二、进行中项目进展（${active.length} 个）`);
+  if (active.length) {
+    active.forEach(p => {
+      const done = projDoneCount(p.id), total = projTotalCount(p.id);
+      L.push(`- ${p.code} ${p.title}：阶段「${p.phase || '—'}」，下一步「${p.nextStep || '—'}」，任务 ${done}/${total}${p.deadline ? '，截止 ' + p.deadline : ''}`);
+    });
+  } else { L.push('- （无进行中项目）'); }
+  L.push('');
+
+  if (logs.length) {
+    L.push(`三、进度记录（${logs.length} 条）`);
+    logs.slice().sort((a, b) => (a.date || '').localeCompare(b.date || '')).forEach(l => {
+      const p = state.projects.find(x => x.id === l.projectId);
+      L.push(`- ${l.date} ${p ? '[' + p.code + '] ' : ''}${(l.evidence || '').slice(0, 50)}`);
+    });
+    L.push('');
+  }
+
+  if (wp && (wp.items || []).length) {
+    L.push(`四、下周计划（${wp.items.length} 项）`);
+    wp.items.forEach(it => L.push(`- ${it.name}`));
+    L.push('');
+  }
+
+  L.push(`—— 生成于 ${fmtDateFull(td)} · Canming's Life Projects`);
+  return L.join('\n');
+}
+function genReport(kind) {
+  const area = document.getElementById('reportArea');
+  if (area) area.value = generateReport(kind);
+}
+async function copyReport() {
+  const area = document.getElementById('reportArea');
+  const text = area ? area.value : '';
+  if (!text) { await alertDialog('请先生成报告', { icon: '⚠️' }); return; }
+  try { await navigator.clipboard.writeText(text); await alertDialog('报告已复制到剪贴板', { icon: '✅' }); }
+  catch (e) { await alertDialog('复制失败，请手动全选复制', { icon: '⚠️' }); }
+}
+
+/* ---------- 深色模式 ---------- */
+function renderThemeBtn() {
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  [['themeIcon', 'themeLabel'], ['themeIconDrawer', 'themeLabelDrawer']].forEach(([iid, lid]) => {
+    const icon = document.getElementById(iid);
+    const label = document.getElementById(lid);
+    if (icon) icon.textContent = dark ? '☀️' : '🌙';
+    if (label) label.textContent = dark ? '浅色模式' : '深色模式';
+  });
+}
+function setTheme(t) {
+  const v = t === 'dark' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', v);
+  try { localStorage.setItem('wb_theme', v); } catch (e) {}
+  renderThemeBtn();
+}
+function toggleTheme() {
+  const cur = document.documentElement.getAttribute('data-theme') === 'dark';
+  setTheme(cur ? 'light' : 'dark');
+}
+function loadTheme() {
+  let t = 'light';
+  try { t = localStorage.getItem('wb_theme') || 'light'; } catch (e) {}
+  document.documentElement.setAttribute('data-theme', t);
+  renderThemeBtn();
 }
 
 /* ============================================================
@@ -3396,6 +3610,7 @@ function seed() {
 function init() {
   loadLocal();
   loadOfflinePending(); // 恢复离线未同步标记（防止刷新后 pull 覆盖本地改动）
+  loadTheme(); // 恢复深色/浅色偏好
   initSync().then(() => {
     renderAuthArea();
     render();

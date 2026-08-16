@@ -27,8 +27,15 @@
           <div class="brand-sub">Life Projects</div>
         </div>
       </div>
+      <div class="search-wrap">
+        <input class="search-input" id="globalSearch" placeholder="🔍 搜索项目 / 任务 / 笔记 / 文献…" autocomplete="off" oninput="renderSearchResults()" onfocus="renderSearchResults()">
+        <div class="search-results" id="searchResults"></div>
+      </div>
       <nav class="nav" id="nav"></nav>
       <div class="auth-area" id="authArea"></div>
+      <div class="theme-toggle" onclick="toggleTheme()">
+        <span id="themeIcon">🌙</span> <span id="themeLabel">深色模式</span>
+      </div>
       <div class="sidebar-foot" id="syncFoot">仅本地存储</div>
     </aside>
     <main class="main" id="main"></main>
