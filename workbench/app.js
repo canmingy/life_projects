@@ -238,6 +238,11 @@ async function initSync() {
   renderAuthArea();
 }
 
+// 本机浏览位置/筛选状态：只在本地保留，不随云同步（避免打开页面被"踢"回概览等）
+const UI_KEYS = ['activeModule', 'selectedProjectId', 'calMonth', 'calSelDay',
+  'financeMonth', 'finF', 'fitTab', 'habitMonth', 'noteFilter', 'litFilter',
+  'taskFilter', 'litF', 'culView', 'culF'];
+
 async function pullRemote() {
   if (!sb || !syncUser) return false;
   const { data, error } = await sb
@@ -249,9 +254,17 @@ async function pullRemote() {
   if (data && data.data) {
     // 本地有未同步改动时，绝不用云端覆盖本地（防止丢离线新增）
     if (offlinePending) return false;
+    // 先记住本机浏览位置/筛选状态，覆盖后恢复
+    const ui = {};
+    UI_KEYS.forEach(k => { ui[k] = state[k]; });
     state = Object.assign(defaultState(), data.data);
     ensureArrays();
     migrateState();
+    UI_KEYS.forEach(k => { if (ui[k] !== undefined && ui[k] !== null) state[k] = ui[k]; });
+    // 选中的项目若已被删除则清空
+    if (state.selectedProjectId && !state.projects.some(p => p.id === state.selectedProjectId)) {
+      state.selectedProjectId = null;
+    }
     // 补默认值：防止云端旧数据缺少字段导致渲染崩溃
     if (!state.calMonth) state.calMonth = curMonth();
     if (!state.financeMonth) state.financeMonth = curMonthStr();
@@ -990,31 +1003,27 @@ function childTasks(parentId) { return state.tasks.filter(t => t.parentId === pa
 function execTasks(pid) {
   return state.tasks.filter(t => t.projectId === pid && t.level === 3);
 }
-// 可作为待做展示的任务：执行任务 + 没有子任务的空任务组
+// 可作为待做展示的任务：只有个人任务 + 执行任务（level 3）。
+// 任务组（level 2）是纯分类，永不进待做。
 function dailyTasks() {
-  return state.tasks.filter(t => {
-    if (t.type === 'personal') return true;
-    if (t.level === 3) return true;
-    if (t.level === 2) return childTasks(t.id).length === 0; // 空任务组可作执行任务
-    return false;
-  });
+  return state.tasks.filter(t => t.type === 'personal' || t.level === 3);
 }
 // 今日待做：只显示计划执行日期 == 今天 的任务（不含未排期）
 function todayTasks() {
   const td = todayStr();
-  return state.tasks.filter(t => t.status !== '已完成' && t.planDate === td);
+  return dailyTasks().filter(t => t.status !== '已完成' && t.planDate === td);
 }
 function unscheduledTasks() {
-  return state.tasks.filter(t => t.status !== '已完成' && !t.planDate);
+  return dailyTasks().filter(t => t.status !== '已完成' && !t.planDate);
 }
 function upcomingTasks() {
   const td = todayStr();
-  return state.tasks.filter(t => t.status !== '已完成' && t.planDate && t.planDate > td)
+  return dailyTasks().filter(t => t.status !== '已完成' && t.planDate && t.planDate > td)
     .sort((a, b) => a.planDate.localeCompare(b.planDate));
 }
 function overdueTasks() {
   const td = todayStr();
-  return state.tasks.filter(t => t.status !== '已完成' && t.planDate && t.planDate < td)
+  return dailyTasks().filter(t => t.status !== '已完成' && t.planDate && t.planDate < td)
     .sort((a, b) => a.planDate.localeCompare(b.planDate));
 }
 // 渲染一个任务分组小节（今日 / 已逾期 / 即将到来 / 未排期）
@@ -1029,9 +1038,7 @@ function projDoneCount(pid) {
   return execTasks(pid).filter(t => t.status === '已完成').length;
 }
 function projTotalCount(pid) {
-  const ex = execTasks(pid).length;
-  const emptyGroups = taskGroups(pid).filter(g => childTasks(g.id).length === 0).length;
-  return ex + emptyGroups;
+  return execTasks(pid).length;
 }
 function statusClass(s) {
   return { '未开始': 'st-todo', '进行中': 'st-doing', '等待': 'st-wait',
@@ -1141,7 +1148,7 @@ function renderProjectDetail(p) {
             <span class="tg-arrow">${open ? '▾' : '▸'}</span>
             <span class="tg-name">${escapeHtml(g.name)}</span>
             <span class="tg-count">${kids.filter(k => k.status === '已完成').length}/${kids.length}</span>
-            <span class="${statusClass(g.status)} tg-status">${g.status}</span>
+            <select class="exec-sel tg-status-sel" onclick="event.stopPropagation()" onchange="setTaskField('${g.id}','status',this.value)" title="任务组状态">${statusOptions(g.status)}</select>
             <button class="st-del" title="删除任务组" onclick="event.stopPropagation();delTask('${g.id}')">🗑️</button>
           </div>
           ${open ? `<div class="tg-body">
@@ -1233,7 +1240,8 @@ function setTaskField(id, field, val) {
   t[field] = val;
   if (field === 'status') {
     t.doneDate = val === '已完成' ? todayStr() : null;
-    if (val === '已完成' && !wasDone && t.type === 'project') { openProgressModal(id); return; }
+    // 只有执行任务（level 3）完成时才弹进度日志；任务组只是分类标记，不弹
+    if (val === '已完成' && !wasDone && t.type === 'project' && t.level === 3) { openProgressModal(id); return; }
   }
   saveState();
   if (state.activeModule === 'projects') renderProjects(); else render();
