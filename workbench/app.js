@@ -494,6 +494,74 @@ function escapeHtml(s) {
   return d.innerHTML;
 }
 
+/* ---------- 自定义确认/提示弹窗（替代浏览器原生 confirm/alert，橙主题） ---------- */
+function confirmDialog(message, opts = {}) {
+  return new Promise(resolve => {
+    const m = document.getElementById('modalRoot');
+    if (!m) { resolve(true); return; }
+    const requireText = opts.requireText || '';
+    m.innerHTML = `
+      <div class="modal-mask" onclick="if(event.target===this)window.__mbClose(false)">
+        <div class="modal modal-confirm">
+          <div class="mc-icon">${opts.icon || '🗑️'}</div>
+          <div class="mc-msg">${escapeHtml(message)}</div>
+          ${requireText ? `<input type="text" class="input" id="mcInput" placeholder="输入「${escapeHtml(requireText)}」以确认" oninput="window.__mbInputCheck()">` : ''}
+          <div class="modal-actions" style="justify-content:center;">
+            <button class="btn btn-ghost" onclick="window.__mbClose(false)">取消</button>
+            <button class="btn btn-primary" id="mcConfirm" ${requireText ? 'disabled' : ''} onclick="window.__mbClose(true)">${escapeHtml(opts.confirmText || '确定')}</button>
+          </div>
+        </div>
+      </div>`;
+    window.__mbClose = v => {
+      if (m) m.innerHTML = '';
+      delete window.__mbClose;
+      delete window.__mbInputCheck;
+      resolve(v);
+    };
+    window.__mbInputCheck = () => {
+      const inp = document.getElementById('mcInput');
+      const btn = document.getElementById('mcConfirm');
+      if (btn) btn.disabled = !inp || inp.value.trim() !== requireText;
+    };
+  });
+}
+function alertDialog(message, opts = {}) {
+  return new Promise(resolve => {
+    const m = document.getElementById('modalRoot');
+    if (!m) { resolve(); return; }
+    m.innerHTML = `
+      <div class="modal-mask" onclick="if(event.target===this)window.__mbOk()">
+        <div class="modal modal-confirm">
+          <div class="mc-icon">${opts.icon || '✅'}</div>
+          <div class="mc-msg">${escapeHtml(message)}</div>
+          <div class="modal-actions" style="justify-content:center;">
+            <button class="btn btn-primary" onclick="window.__mbOk()">知道了</button>
+          </div>
+        </div>
+      </div>`;
+    window.__mbOk = () => { m.innerHTML = ''; delete window.__mbOk; resolve(); };
+  });
+}
+function promptDialog(message, defaultValue = '') {
+  return new Promise(resolve => {
+    const m = document.getElementById('modalRoot');
+    if (!m) { resolve(null); return; }
+    m.innerHTML = `
+      <div class="modal-mask" onclick="if(event.target===this)window.__mbPrompt(null)">
+        <div class="modal modal-confirm">
+          <div class="mc-icon">✏️</div>
+          <div class="mc-msg">${escapeHtml(message)}</div>
+          <input type="text" class="input" id="mcPromptInput" value="${escapeHtml(defaultValue)}" onkeydown="if(event.key==='Enter')window.__mbPrompt(this.value)">
+          <div class="modal-actions" style="justify-content:center;">
+            <button class="btn btn-ghost" onclick="window.__mbPrompt(null)">取消</button>
+            <button class="btn btn-primary" onclick="window.__mbPrompt(document.getElementById('mcPromptInput').value)">确定</button>
+          </div>
+        </div>
+      </div>`;
+    window.__mbPrompt = v => { m.innerHTML = ''; delete window.__mbPrompt; resolve(v); };
+  });
+}
+
 function now() { return new Date(); }
 function curMonth() { const d = now(); return { year: d.getFullYear(), month: d.getMonth() }; }
 function curMonthStr() { const d = now(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; }
@@ -842,14 +910,14 @@ function refreshWeekProject() {
   const pje = document.getElementById('wkProject');
   if (te && pje) pje.disabled = te.value === 'personal';
 }
-function addWeekTaskNew() {
+async function addWeekTaskNew() {
   const name = document.getElementById('wkName').value.trim();
   if (!name) return;
   const type = document.getElementById('wkType').value;
   const projectId = type === 'project' ? document.getElementById('wkProject').value : null;
-  if (type === 'project' && !projectId) { alert('请先选择所属项目'); return; }
+  if (type === 'project' && !projectId) { await alertDialog('请先选择所属项目', { icon: '⚠️' }); return; }
   const w = getWeeklyPlan();
-  if ((w.items || []).length + w.taskIds.length >= 5) { alert('本周最多安排 5 项'); return; }
+  if ((w.items || []).length + w.taskIds.length >= 5) { await alertDialog('本周最多安排 5 项', { icon: '⚠️' }); return; }
   w.items.push({ id: uid(), name, type, projectId, done: false });
   saveState(); render();
 }
@@ -871,14 +939,14 @@ function refreshQuarterProject() {
   const pje = document.getElementById('qProject');
   if (te && pje) pje.disabled = te.value === 'personal';
 }
-function addQuarterRefNew() {
+async function addQuarterRefNew() {
   const name = document.getElementById('qName').value.trim();
   if (!name) return;
   const type = document.getElementById('qType').value;
   const projectId = type === 'project' ? document.getElementById('qProject').value : null;
-  if (type === 'project' && !projectId) { alert('请先选择所属项目'); return; }
+  if (type === 'project' && !projectId) { await alertDialog('请先选择所属项目', { icon: '⚠️' }); return; }
   const qp = getQuarterlyPlan();
-  if (qp.refs.length >= 5) { alert('本季度最多安排 5 项'); return; }
+  if (qp.refs.length >= 5) { await alertDialog('本季度最多安排 5 项', { icon: '⚠️' }); return; }
   qp.refs.push({ id: uid(), name, type, projectId });
   saveState(); render();
 }
@@ -1072,10 +1140,28 @@ function quadOptions2(sel) {
 
 function renderProjects() {
   const main = document.getElementById('main');
+  const archived = state.projects.filter(p => p.status === '已完成');
+  const active = state.projects.filter(p => p.status !== '已完成');
   if (!state.selectedProjectId && state.projects.length) {
     state.selectedProjectId = state.projects[0].id;
   }
   const sel = state.projects.find(p => p.id === state.selectedProjectId);
+  const archOpen = taskUI.collapsed['__archive'] === true; // 默认折叠（undefined 视为折叠）
+
+  const projCard = p => {
+    const done = projDoneCount(p.id), total = projTotalCount(p.id);
+    const act = p.id === state.selectedProjectId ? 'active' : '';
+    return `<div class="proj-card ${act}" onclick="selectProject('${p.id}')">
+      <div class="pc-top">
+        <span class="pc-code">${escapeHtml(p.code)}</span>
+        <span class="badge b-orange">${escapeHtml(p.label)}</span>
+        ${p.blocked ? '<span class="badge b-red">阻塞</span>' : ''}
+      </div>
+      <div class="pc-title">${escapeHtml(p.title)}</div>
+      <div class="pc-meta"><span>${escapeHtml(p.status)}</span><span class="pc-pct">已完成 ${done}/${total} 项</span></div>
+      <div class="progress" style="margin-top:8px;"><div class="progress-fill" style="width:${projProgress(p)}%"></div></div>
+    </div>`;
+  };
 
   main.innerHTML = `
     <div class="view-head">
@@ -1084,20 +1170,12 @@ function renderProjects() {
     </div>
     <div class="proj-layout">
       <div class="proj-list">
-        ${state.projects.map(p => {
-          const done = projDoneCount(p.id), total = projTotalCount(p.id);
-          const active = p.id === state.selectedProjectId ? 'active' : '';
-          return `<div class="proj-card ${active}" onclick="selectProject('${p.id}')">
-            <div class="pc-top">
-              <span class="pc-code">${escapeHtml(p.code)}</span>
-              <span class="badge b-orange">${escapeHtml(p.label)}</span>
-              ${p.blocked ? '<span class="badge b-red">阻塞</span>' : ''}
-            </div>
-            <div class="pc-title">${escapeHtml(p.title)}</div>
-            <div class="pc-meta"><span>${escapeHtml(p.status)}</span><span class="pc-pct">已完成 ${done}/${total} 项</span></div>
-            <div class="progress" style="margin-top:8px;"><div class="progress-fill" style="width:${projProgress(p)}%"></div></div>
-          </div>`;
-        }).join('') || '<div class="empty"><span class="emoji">📭</span>还没有项目</div>'}
+        ${active.map(projCard).join('') || '<div class="empty"><span class="emoji">📭</span>还没有进行中的项目</div>'}
+        ${archived.length ? `
+          <div class="proj-archive-head" onclick="toggleProjectArchive()">
+            📦 已归档（${archived.length}）<span class="tg-arrow">${archOpen ? '▾' : '▸'}</span>
+          </div>
+          <div id="archiveList" style="${archOpen ? '' : 'display:none;'}">${archived.map(projCard).join('')}</div>` : ''}
       </div>
       <div class="proj-detail">
         ${sel ? renderProjectDetail(sel) : '<div class="empty"><span class="emoji">👈</span>选择左侧项目查看详情</div>'}
@@ -1105,20 +1183,52 @@ function renderProjects() {
     </div>
   `;
 }
+function toggleProjectArchive() {
+  taskUI.collapsed['__archive'] = !taskUI.collapsed['__archive'];
+  renderProjects();
+}
 
 function execRow(t) {
   const done = t.status === '已完成';
   const mchk = (multiOn('proj') || multiOn('todos')) ? `<input type="checkbox" class="mchk" ${taskUI.multi.sel[t.id] ? 'checked' : ''} onchange="multiToggle('${t.id}')" title="选择此项">` : '';
+  const noteTip = t.note ? `备注：${escapeHtml(t.note)}` : '添加备注';
   return `<div class="exec ${done ? 'done' : ''}">
     ${mchk}
     <input type="checkbox" class="exec-chk" ${done ? 'checked' : ''} onchange="setTaskStatus('${t.id}', this.checked ? '已完成' : '未开始')">
-    <input class="exec-name-input" value="${escapeHtml(t.name)}" onchange="renameTask('${t.id}', this.value)" maxlength="160">
+    <input class="exec-name-input" value="${escapeHtml(t.name)}" title="${noteTip}" onchange="renameTask('${t.id}', this.value)" maxlength="160">
+    ${t.note ? `<span class="note-dot" title="${noteTip}">💬</span>` : ''}
     <select class="exec-sel" onchange="setTaskField('${t.id}','status',this.value)">${statusOptions(t.status)}</select>
     <select class="exec-sel" onchange="setTaskField('${t.id}','quad',this.value)">${quadOptions2(t.quad)}</select>
     <input type="date" class="exec-date" value="${t.planDate || ''}" title="计划执行日期" onchange="setTaskField('${t.id}','planDate',this.value)">
     <input type="date" class="exec-date" value="${t.dueDate || ''}" title="截止日期" onchange="setTaskField('${t.id}','dueDate',this.value)">
+    <button class="st-del" title="${noteTip}" onclick="editTaskNote('${t.id}')">${t.note ? '💬' : '📝'}</button>
     <button class="st-del" title="删除" onclick="delTask('${t.id}')">🗑️</button>
   </div>`;
+}
+function editTaskNote(id) {
+  const t = state.tasks.find(x => x.id === id); if (!t) return;
+  const m = document.getElementById('modalRoot');
+  if (!m) return;
+  m.innerHTML = `
+    <div class="modal-mask" onclick="if(event.target===this)window.__tnClose()">
+      <div class="modal" style="max-width:420px;">
+        <h3>📝 任务备注</h3>
+        <div class="modal-form">
+          <textarea class="input" id="tnText" rows="4" placeholder="补充说明：具体要求、进展、相关链接…">${escapeHtml(t.note || '')}</textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" onclick="window.__tnClose()">取消</button>
+          <button class="btn btn-primary" onclick="window.__tnSave()">保存</button>
+        </div>
+      </div>
+    </div>`;
+  window.__tnClose = () => { m.innerHTML = ''; delete window.__tnClose; delete window.__tnSave; };
+  window.__tnSave = () => {
+    t.note = (document.getElementById('tnText').value || '').trim();
+    saveState();
+    window.__tnClose();
+    if (state.activeModule === 'projects') renderProjects(); else render();
+  };
 }
 function addExecRow(parentId) {
   return `<div class="exec add-row">
@@ -1251,8 +1361,8 @@ function renameTask(id, name) {
   t.name = name.trim() || t.name;
   saveState();
 }
-function delTask(id) {
-  if (!confirm('删除该任务？若它是任务组，其下执行任务也会一并删除。')) return;
+async function delTask(id) {
+  if (!(await confirmDialog('删除该任务？若它是任务组，其下执行任务也会一并删除。', { icon: '🗑️' }))) return;
   state.tasks = state.tasks.filter(x => x.id !== id && x.parentId !== id);
   delete taskUI.collapsed[id];
   saveState();
@@ -1271,12 +1381,12 @@ function multiToggle(id) {
   else taskUI.multi.sel[id] = true;
   if (state.activeModule === 'projects') renderProjects(); else render();
 }
-function multiDelete(view) {
+async function multiDelete(view) {
   const ids = Object.keys(taskUI.multi.sel);
   if (!ids.length) return;
   const gCnt = ids.filter(id => state.tasks.some(t => t.id === id && t.level === 2)).length;
   const willDel = state.tasks.filter(x => ids.includes(x.id) || ids.includes(x.parentId)).length;
-  if (!confirm(`删除选中的 ${ids.length} 项（${gCnt ? '含 ' + gCnt + ' 个任务组，' : ''}共影响 ${willDel} 条任务）？此操作不可撤销。`)) return;
+  if (!(await confirmDialog(`删除选中的 ${ids.length} 项（${gCnt ? '含 ' + gCnt + ' 个任务组，' : ''}共影响 ${willDel} 条任务）？此操作不可撤销。`, { icon: '🗑️' }))) return;
   state.tasks = state.tasks.filter(x => !ids.includes(x.id) && !ids.includes(x.parentId));
   ids.forEach(id => delete taskUI.collapsed[id]);
   taskUI.multi = { view: null, active: false, sel: {} };
@@ -1313,24 +1423,54 @@ function selectProject(id) {
 }
 
 function addProject() {
-  const code = prompt('项目代号（如 IOC_MDD）：');
-  if (!code) return;
-  const title = prompt('项目中文名：') || '';
-  const label = prompt('标签（如 A1主攻 / 长期 / 重要）：') || '普通';
-  const status = prompt('状态（进行中 / 待启动 / 已完成 / 暂停）：') || '进行中';
-  const description = prompt('一句话描述（可选）：') || '';
-  const p = {
-    id: uid(), code: code.trim(), title: title.trim(),
-    label, status, description, phase: '', nextStep: '', deadline: null, blocked: false,
+  const m = document.getElementById('modalRoot');
+  if (!m) return;
+  m.innerHTML = `
+    <div class="modal-mask" onclick="if(event.target===this)window.__pfClose()">
+      <div class="modal" style="max-width:400px;">
+        <h3>📁 新建项目</h3>
+        <div class="modal-form">
+          <input class="input" id="pfCode" placeholder="项目代号（必填，如 IOC_MDD）" maxlength="20">
+          <input class="input" id="pfTitle" placeholder="项目中文名（必填）" maxlength="40">
+          <input class="input" id="pfLabel" placeholder="标签（如 A1主攻 / 长期 / 重要）" value="普通" maxlength="20">
+          <select class="select" id="pfStatus">
+            <option>进行中</option><option>待启动</option><option>已完成</option><option>暂停</option>
+          </select>
+          <input class="input" id="pfDesc" placeholder="一句话描述（可选）" maxlength="100">
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" onclick="window.__pfClose()">取消</button>
+          <button class="btn btn-primary" onclick="window.__pfSubmit()">创建</button>
+        </div>
+      </div>
+    </div>`;
+  window.__pfClose = () => { m.innerHTML = ''; delete window.__pfClose; delete window.__pfSubmit; };
+  window.__pfSubmit = () => {
+    const cEl = document.getElementById('pfCode');
+    const tEl = document.getElementById('pfTitle');
+    const code = (cEl.value || '').trim();
+    const title = (tEl.value || '').trim();
+    let bad = false;
+    if (!code) { cEl.style.borderColor = '#e5484d'; bad = true; } else cEl.style.borderColor = '';
+    if (!title) { tEl.style.borderColor = '#e5484d'; bad = true; } else tEl.style.borderColor = '';
+    if (bad) return;
+    const label = (document.getElementById('pfLabel').value || '').trim() || '普通';
+    const status = document.getElementById('pfStatus').value || '进行中';
+    const description = (document.getElementById('pfDesc').value || '').trim();
+    const p = {
+      id: uid(), code, title, label, status, description,
+      phase: '', nextStep: '', deadline: null, blocked: false,
+    };
+    state.projects.push(p);
+    state.selectedProjectId = p.id;
+    saveState();
+    renderProjects();
+    window.__pfClose();
   };
-  state.projects.push(p);
-  state.selectedProjectId = p.id;
-  saveState();
-  renderProjects();
 }
 
-function delProject(pid) {
-  if (!confirm('确定删除该项目？其下所有任务组与执行任务也会删除。')) return;
+async function delProject(pid) {
+  if (!(await confirmDialog('确定删除该项目？其下所有任务组与执行任务也会删除。', { icon: '🗑️' }))) return;
   state.projects = state.projects.filter(p => p.id !== pid);
   state.tasks = state.tasks.filter(t => t.projectId !== pid);
   if (state.selectedProjectId === pid) state.selectedProjectId = null;
@@ -1460,7 +1600,7 @@ function renderTodos() {
   refreshParentOptions();
 }
 
-function addTodo() {
+async function addTodo() {
   const name = document.getElementById('todoName').value.trim();
   if (!name) return;
   const type = document.getElementById('todoType').value;
@@ -1469,11 +1609,11 @@ function addTodo() {
   const planDate = document.getElementById('todoPlan').value || null;
   const dueDate = document.getElementById('todoDue').value || null;
   const quad = document.getElementById('todoQuad').value || null;
-  if (type === 'project' && !projectId) { alert('请先选择所属项目'); return; }
+  if (type === 'project' && !projectId) { await alertDialog('请先选择所属项目', { icon: '⚠️' }); return; }
 
   if (type === 'project' && parentId === '__new__') {
     const gname = (document.getElementById('todoNewGroup').value || '').trim();
-    if (!gname) { alert('请输入新任务组名称'); return; }
+    if (!gname) { await alertDialog('请输入新任务组名称', { icon: '⚠️' }); return; }
     const g = { id: uid(), name: gname, type: 'project', projectId, parentId: projectId,
       level: 2, planDate: null, dueDate: null, quad: null, status: '未开始', note: '', doneDate: null };
     state.tasks.push(g);
@@ -1522,7 +1662,7 @@ function refreshDashParentOptions() {
   const nm = document.getElementById('dqName');
   if (nm) nm.onkeydown = e => { if (e.key === 'Enter') dashQuickAdd(); };
 }
-function dashQuickAdd() {
+async function dashQuickAdd() {
   const name = document.getElementById('dqName').value.trim();
   if (!name) return;
   const type = document.getElementById('dqType').value;
@@ -1531,10 +1671,10 @@ function dashQuickAdd() {
   const planDate = document.getElementById('dqPlan').value || null;
   const dueDate = document.getElementById('dqDue').value || null;
   const quad = document.getElementById('dqQuad').value || null;
-  if (type === 'project' && !projectId) { alert('请先选择所属项目'); return; }
+  if (type === 'project' && !projectId) { await alertDialog('请先选择所属项目', { icon: '⚠️' }); return; }
   if (type === 'project' && parentId === '__new__') {
     const gname = (document.getElementById('dqNewGroup').value || '').trim();
-    if (!gname) { alert('请输入新任务组名称'); return; }
+    if (!gname) { await alertDialog('请输入新任务组名称', { icon: '⚠️' }); return; }
     const g = { id: uid(), name: gname, type: 'project', projectId, parentId: projectId,
       level: 2, planDate: null, dueDate: null, quad: null, status: '未开始', note: '', doneDate: null };
     state.tasks.push(g);
@@ -2016,10 +2156,10 @@ function weightChart() {
 }
 
 function setFitTab(t) { state.fitTab = t; saveState(); renderFitness(); }
-function addMeasure() {
+async function addMeasure() {
   const get = id => { const v = document.getElementById(id).value; return v === '' ? null : parseFloat(v); };
   const weight = get('mWeight'), bodyfat = get('mBodyfat');
-  if (weight == null && bodyfat == null) { alert('请至少填写体重或体脂率一项'); return; }
+  if (weight == null && bodyfat == null) { await alertDialog('请至少填写体重或体脂率一项', { icon: '⚠️' }); return; }
   const m = {
     id: uid(), date: document.getElementById('mDate').value || todayStr(),
     weight, bodyfat,
@@ -2134,8 +2274,8 @@ function toggleHabitCell(hid, ds) {
   saveState();
   renderHabits();
 }
-function addHabit() {
-  const name = prompt('习惯名称（如 读书 / 冥想）：');
+async function addHabit() {
+  const name = await promptDialog('习惯名称（如 读书 / 冥想）：');
   if (!name) return;
   state.habits.items.push({ id: uid(), name: name.trim() });
   saveState();
@@ -2202,9 +2342,9 @@ function openGoalModal(id) {
       </div>
     </div>`;
 }
-function saveGoal(id) {
+async function saveGoal(id) {
   const title = document.getElementById('gmTitle').value.trim();
-  if (!title) { alert('请填写目标名称'); return; }
+  if (!title) { await alertDialog('请填写目标名称', { icon: '⚠️' }); return; }
   const data = {
     title,
     accept: document.getElementById('gmAccept').value.trim(),
@@ -2218,8 +2358,8 @@ function saveGoal(id) {
   else state.goals.push(Object.assign({ id: uid() }, data));
   saveState(); closeProgressModal(); renderGoals();
 }
-function delGoal(id) {
-  if (!confirm('删除该年度目标？')) return;
+async function delGoal(id) {
+  if (!(await confirmDialog('删除该年度目标？', { icon: '🗑️' }))) return;
   state.goals = state.goals.filter(g => g.id !== id);
   saveState();
   renderGoals();
@@ -2433,9 +2573,9 @@ function renderCulModalTags() {
   const box = document.getElementById('culTags');
   if (box) box.innerHTML = window.__culModalTags.map(t => `<span class="tag-chip" onclick="culModalTagRemove('${escapeHtml(t)}')">${escapeHtml(t)} ✕</span>`).join('');
 }
-function saveCul(id) {
+async function saveCul(id) {
   const name = document.getElementById('cmName').value.trim();
-  if (!name) { alert('请填写作品名称'); return; }
+  if (!name) { await alertDialog('请填写作品名称', { icon: '⚠️' }); return; }
   const data = {
     name,
     type: document.getElementById('cmType').value,
@@ -2496,8 +2636,8 @@ function openCulDetail(id) {
       </div>
     </div>`;
 }
-function delCul(id) {
-  if (!confirm('删除这条作品记录？')) return;
+async function delCul(id) {
+  if (!(await confirmDialog('删除这条作品记录？', { icon: '🗑️' }))) return;
   state.cultural = state.cultural.filter(w => w.id !== id);
   saveState();
   renderCulture();
@@ -2656,13 +2796,13 @@ function renderLitModalTags() {
   const box = document.getElementById('lmTags');
   if (box) box.innerHTML = window.__litModalTags.map(t => `<span class="tag-chip" onclick="litModalTagRemove('${escapeHtml(t)}')">${escapeHtml(t)} ✕</span>`).join('');
 }
-function saveLit(id) {
+async function saveLit(id) {
   const title = document.getElementById('lmTitle').value.trim();
-  if (!title) { alert('请填写标题'); return; }
+  if (!title) { await alertDialog('请填写标题', { icon: '⚠️' }); return; }
   const doi = document.getElementById('lmDoi').value.trim();
   if (doi) {
     const dup = state.literature.find(l => l.doi && l.doi === doi && l.id !== id);
-    if (dup && !confirm('已存在相同 DOI 的文献：' + dup.title + '\n仍要添加？')) return;
+    if (dup && !(await confirmDialog('已存在相同 DOI 的文献：' + dup.title + '\n仍要添加？', { icon: '⚠️' }))) return;
   }
   const data = {
     title,
@@ -2732,8 +2872,8 @@ function openLitDetail(id) {
       </div>
     </div>`;
 }
-function delLit(id) {
-  if (!confirm('删除这条文献？')) return;
+async function delLit(id) {
+  if (!(await confirmDialog('删除这条文献？', { icon: '🗑️' }))) return;
   state.literature = state.literature.filter(l => l.id !== id);
   saveState();
   renderLiterature();
@@ -2776,8 +2916,8 @@ function renderProgress() {
       ${logs.length ? html : '<div class="empty"><span class="emoji">📈</span>还没有进度日志。完成项目任务时会自动询问，也可手动添加。</div>'}
     </div>`;
 }
-function delProgressLog(id) {
-  if (!confirm('删除这条进度日志？')) return;
+async function delProgressLog(id) {
+  if (!(await confirmDialog('删除这条进度日志？', { icon: '🗑️' }))) return;
   state.progressLogs = state.progressLogs.filter(l => l.id !== id);
   saveState(); renderProgress();
 }
@@ -2865,10 +3005,10 @@ function exportAll() {
 }
 function importAll(file) {
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try {
       const parsed = JSON.parse(reader.result);
-      if (!confirm('导入将覆盖当前所有数据，确定继续？')) return;
+      if (!(await confirmDialog('导入将覆盖当前所有数据，确定继续？', { icon: '⚠️' }))) return;
       state = Object.assign(defaultState(), parsed);
       ensureArrays();
       migrateState();
@@ -2876,8 +3016,8 @@ function importAll(file) {
       if (!state.financeMonth) state.financeMonth = curMonthStr();
       saveState();
       render();
-      alert('导入成功');
-    } catch (e) { alert('导入失败：文件格式不正确'); }
+      await alertDialog('导入成功', { icon: '✅' });
+    } catch (e) { await alertDialog('导入失败：文件格式不正确', { icon: '⚠️' }); }
   };
   reader.readAsText(file);
 }
@@ -2913,7 +3053,7 @@ function parseCSVLine(line) {
 }
 function importLitCSV(file) {
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try {
       const text = reader.result;
       const lines = text.replace(/^﻿/, '').split(/\r?\n/).filter(Boolean);
@@ -2940,21 +3080,21 @@ function importLitCSV(file) {
         added++;
       }
       saveState(); renderLiterature();
-      alert('已导入 ' + added + ' 条文献');
-    } catch (e) { alert('导入失败：' + (e.message || e)); }
+      await alertDialog('已导入 ' + added + ' 条文献', { icon: '✅' });
+    } catch (e) { await alertDialog('导入失败：' + (e.message || e), { icon: '⚠️' }); }
   };
   reader.readAsText(file);
 }
-function clearAllData() {
-  if (!confirm('⚠️ 这将清空全部本地数据（项目/任务/笔记/记账/健身等），且无法通过此按钮恢复。\n确定要继续吗？')) return;
-  if (!confirm('⚠️ 二次确认：真的要清空所有数据吗？建议先点「导出全部 JSON」备份。')) return;
+async function clearAllData() {
+  if (!(await confirmDialog('⚠️ 这将清空全部本地数据（项目/任务/笔记/记账/健身等），且无法通过此按钮恢复。\n确定要继续吗？', { icon: '⚠️' }))) return;
+  if (!(await confirmDialog('⚠️ 二次确认：真的要清空所有数据吗？建议先点「导出全部 JSON」备份。', { icon: '⚠️', requireText: '确认清空', confirmText: '清空全部数据' }))) return;
   state = defaultState();
   state.calMonth = curMonth();
   state.financeMonth = curMonthStr();
   seed();
   saveState();
   render();
-  alert('已清空并重置为初始示例数据');
+  await alertDialog('已清空并重置为初始示例数据', { icon: '✅' });
 }
 function renderBackup() {
   const main = document.getElementById('main');
@@ -3084,36 +3224,36 @@ async function refreshShareList() {
 async function shareCreate() {
   const title = (document.getElementById('shTitle').value || '').trim();
   const modules = [...document.querySelectorAll('.sh-chk input:checked')].map(el => el.value);
-  if (!modules.length) { alert('请至少选择一个要分享的模块'); return; }
+  if (!modules.length) { await alertDialog('请至少选择一个要分享的模块', { icon: '⚠️' }); return; }
   const days = parseInt(document.getElementById('shExpiry').value) || 0;
   try {
     const res = await shareRpc('wb_create_share', { title, modules, expires_in_days: days || null });
     const link = shareLinkFor(res.token);
     await navigator.clipboard.writeText(link).catch(() => {});
-    alert('分享已创建，链接已复制到剪贴板：\n' + link);
+    await alertDialog('分享已创建，链接已复制到剪贴板：\n' + link, { icon: '✅' });
     refreshShareList();
   } catch (e) {
-    alert('创建失败：' + e.message);
+    await alertDialog('创建失败：' + e.message, { icon: '⚠️' });
   }
 }
 async function shareCopy(token) {
   const link = shareLinkFor(token);
-  try { await navigator.clipboard.writeText(link); alert('链接已复制：\n' + link); }
-  catch (e) { prompt('复制这个链接：', link); }
+  try { await navigator.clipboard.writeText(link); await alertDialog('链接已复制：\n' + link, { icon: '✅' }); }
+  catch (e) { await alertDialog('复制失败，请手动复制：\n' + link, { icon: '⚠️' }); }
 }
 async function shareTogglePause(token, paused) {
   try { await shareRpc('wb_pause_share', { token, paused: !paused }); refreshShareList(); }
-  catch (e) { alert('操作失败：' + e.message); }
+  catch (e) { await alertDialog('操作失败：' + e.message, { icon: '⚠️' }); }
 }
 async function shareRevoke(token) {
-  if (!confirm('永久撤销该分享？撤销后链接立即失效且不可恢复。')) return;
+  if (!(await confirmDialog('永久撤销该分享？撤销后链接立即失效且不可恢复。', { icon: '⚠️' }))) return;
   try { await shareRpc('wb_revoke_share', { token }); refreshShareList(); }
-  catch (e) { alert('操作失败：' + e.message); }
+  catch (e) { await alertDialog('操作失败：' + e.message, { icon: '⚠️' }); }
 }
 async function shareDelete(token) {
-  if (!confirm('删除该分享记录？')) return;
+  if (!(await confirmDialog('删除该分享记录？', { icon: '🗑️' }))) return;
   try { await shareRpc('wb_delete_share', { token }); refreshShareList(); }
-  catch (e) { alert('操作失败：' + e.message); }
+  catch (e) { await alertDialog('操作失败：' + e.message, { icon: '⚠️' }); }
 }
 
 /* ============================================================

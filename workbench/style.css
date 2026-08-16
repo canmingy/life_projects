@@ -559,6 +559,13 @@ body {
 .modal-form { display: flex; flex-direction: column; gap: 12px; }
 .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 6px; }
 
+/* 确认/提示弹窗（橙主题） */
+.modal-confirm { max-width: 360px; text-align: center; padding: 26px 24px; }
+.mc-icon { font-size: 40px; line-height: 1; margin-bottom: 12px; }
+.mc-msg { font-size: 14.5px; color: var(--text-2); line-height: 1.7; margin-bottom: 14px; white-space: pre-wrap; word-break: break-word; }
+.modal-confirm .input { text-align: center; margin-bottom: 14px; }
+.modal-confirm .btn { min-height: 40px; padding: 0 20px; font-weight: 700; }
+
 /* ---------- Scrollbar ---------- */
 ::-webkit-scrollbar { width: 7px; height: 7px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -820,3 +827,29 @@ body {
 @media (max-width: 1080px) {
   .dash-3col { grid-template-columns: 1fr; }
 }
+
+/* 任务备注图标 */
+.note-dot { font-size: 13px; flex-shrink: 0; cursor: default; }
+
+/* 项目归档分组 */
+.proj-archive-head {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 14px; padding: 10px 12px;
+  border: 1px dashed var(--border); border-radius: var(--radius-sm);
+  font-size: 13px; font-weight: 700; color: var(--text-2);
+  cursor: pointer; user-select: none; background: var(--orange-lighter);
+}
+.proj-archive-head:hover { border-color: var(--orange); color: var(--orange-dark); }
+
+/* 任务备注图标 */
+.note-dot { font-size: 13px; flex-shrink: 0; cursor: default; }
+
+/* 项目归档分组 */
+.proj-archive-head {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 14px; padding: 10px 12px;
+  border: 1px dashed var(--border); border-radius: var(--radius-sm);
+  font-size: 13px; font-weight: 700; color: var(--text-2);
+  cursor: pointer; user-select: none; background: var(--orange-lighter);
+}
+.proj-archive-head:hover { border-color: var(--orange); color: var(--orange-dark); }
