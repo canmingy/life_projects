@@ -110,6 +110,7 @@ function defaultState() {
     culView: 'all',
     culF: { search: '', type: 'all', cat: 'all', year: 'all', rating: 'all', tag: 'all' },
     lastBackup: null,
+    dream: { image: '', text: '' },   // 我的梦想板块（图片 + 激励语）
   };
 }
 
@@ -121,6 +122,7 @@ function ensureArrays() {
   });
   if (!state.fitness) state.fitness = { measures: [], exercises: [] };
   if (!state.habits) state.habits = { items: [], log: {} };
+  if (!state.dream || typeof state.dream !== 'object') state.dream = { image: '', text: '' };
   if (state.version == null) state.version = 1;
 }
 
@@ -981,7 +983,6 @@ function renderDashboard() {
   const todayTodos = todayTasks();
   const unschedCount = unscheduledTasks().length;
   const projOptions = state.projects.map(p => `<option value="${p.id}">${escapeHtml(p.code)}</option>`).join('');
-  const recentNotes = state.notes.slice(-4).reverse();
 
   main.innerHTML = `
     <div class="view-head">
@@ -1050,23 +1051,101 @@ function renderDashboard() {
 
     <div class="card card-pad" style="margin-top:18px;">
       <div class="card-head" style="padding:0 0 12px;border:none;display:flex;justify-content:space-between;align-items:center;">
-        <h3>📁 项目进度（点击展开）</h3>
+        <h3>📁 项目进度</h3>
         <span style="font-size:12px;color:var(--text-3);">仅任务数量，不代表完成度</span>
       </div>
       ${renderDashProjectTree()}
     </div>
 
     <div class="card card-pad" style="margin-top:18px;">
-      <div class="card-head" style="padding:0 0 12px;border:none;"><h3>📝 最近手账</h3></div>
-      ${recentNotes.length ? recentNotes.map(n => `
-        <div class="dash-list-item">
-          <span class="badge b-gray">${n.type}</span>
-          <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(n.content.slice(0, 40))}</span>
-          <span style="color:var(--text-3);font-size:11.5px;">${fmtDateTime(n.createdAt)}</span>
-        </div>`).join('') : '<div class="empty">还没有手账，去记一笔吧</div>'}
+      <div class="card-head" style="padding:0 0 12px;border:none;"><h3>✨ 我的梦想</h3></div>
+      ${renderDream()}
     </div>
   `;
   refreshDashParentOptions();
+}
+
+/* ---------- 我的梦想板块 ---------- */
+function renderDream() {
+  const d = state.dream = state.dream || { image: '', text: '' };
+  return `<div class="dream-wrap">
+    <div class="dream-img" onclick="pickDreamImage()" title="点击添加 / 更换图片">
+      ${d.image ? `<img src="${d.image}" alt="梦想">` : '<div class="dream-img-ph">📷<br><small>添加图片</small></div>'}
+      ${d.image ? `<span class="dream-img-del" title="删除图片" onclick="event.stopPropagation();removeDreamImage()">✕</span>` : ''}
+    </div>
+    <div class="dream-text" onclick="editDreamText()" title="点击编辑激励语">
+      ${d.text ? `<span style="white-space:pre-wrap;">${escapeHtml(d.text)}</span>` : '<span class="muted">写下激励自己的话…</span>'}
+    </div>
+  </div>`;
+}
+function pickDreamImage() {
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'image/*';
+  inp.onchange = () => {
+    const f = inp.files && inp.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const maxW = 640;
+          const scale = Math.min(1, maxW / (img.width || 1));
+          const w = Math.round((img.width || 0) * scale), h = Math.round((img.height || 0) * scale);
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          state.dream = state.dream || { image: '', text: '' };
+          state.dream.image = canvas.toDataURL('image/jpeg', 0.72);
+          saveState();
+          renderDashboard();
+        } catch (e) {
+          // 环境不支持 canvas 时直接存原图
+          state.dream = state.dream || { image: '', text: '' };
+          state.dream.image = reader.result;
+          saveState();
+          renderDashboard();
+        }
+      };
+      img.onerror = () => {};
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(f);
+  };
+  inp.click();
+}
+function removeDreamImage() {
+  state.dream = state.dream || { image: '', text: '' };
+  state.dream.image = '';
+  saveState();
+  renderDashboard();
+}
+function editDreamText() {
+  const m = document.getElementById('modalRoot');
+  if (!m) return;
+  const d = state.dream = state.dream || { image: '', text: '' };
+  m.innerHTML = `
+    <div class="modal-mask" onclick="if(event.target===this)window.__dmClose()">
+      <div class="modal" style="max-width:420px;">
+        <h3>✨ 激励自己的话</h3>
+        <div class="modal-form">
+          <textarea class="input" id="dmText" rows="5" placeholder="每天看一遍，给自己打气…">${escapeHtml(d.text || '')}</textarea>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" onclick="window.__dmClose()">取消</button>
+          <button class="btn btn-primary" onclick="window.__dmSave()">保存</button>
+        </div>
+      </div>
+    </div>`;
+  window.__dmClose = () => { m.innerHTML = ''; delete window.__dmClose; delete window.__dmSave; };
+  window.__dmSave = () => {
+    d.text = (document.getElementById('dmText').value || '').trim();
+    saveState();
+    window.__dmClose();
+    renderDashboard();
+  };
 }
 
 /* ============================================================
