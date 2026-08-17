@@ -908,7 +908,7 @@ function dashTaskRow(t) {
   const p = state.projects.find(x => x.id === t.projectId);
   return `<div class="dash-task ${done ? 'done' : ''}">
     <span class="q-check" style="margin:0;${done ? 'background:var(--orange);border-color:var(--orange);' : ''}" onclick="setTaskStatus('${t.id}','${done ? '未开始' : '已完成'}')"></span>
-    <span style="${done ? 'text-decoration:line-through;color:var(--text-3);' : ''}">${escapeHtml(t.name)}</span>
+    <span class="dash-task-name" style="${done ? 'text-decoration:line-through;color:var(--text-3);' : ''}">${escapeHtml(t.name)}</span>
     ${quadBadge(t.quad)}
     ${p ? `<span class="badge b-orange" style="margin-left:auto;font-size:10px;">${escapeHtml(p.code)}</span>` : ''}
   </div>`;
