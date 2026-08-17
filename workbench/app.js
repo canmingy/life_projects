@@ -1141,7 +1141,10 @@ function editDreamText() {
     </div>`;
   window.__dmClose = () => { m.innerHTML = ''; delete window.__dmClose; delete window.__dmSave; };
   window.__dmSave = () => {
-    d.text = (document.getElementById('dmText').value || '').trim();
+    const ta = document.getElementById('dmText');
+    const val = ta ? (ta.value || '').trim() : '';
+    state.dream = state.dream || { image: '', text: '' };
+    state.dream.text = val;
     saveState();
     window.__dmClose();
     renderDashboard();
