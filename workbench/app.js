@@ -110,7 +110,7 @@ function defaultState() {
     culView: 'all',
     culF: { search: '', type: 'all', cat: 'all', year: 'all', rating: 'all', tag: 'all' },
     lastBackup: null,
-    dream: { image: '', text: '' },   // 我的梦想板块（图片 + 激励语）
+    dream: { image: '', text: '', en: '' },   // 我的梦想板块（图片 + 中文激励语 + 英文标语）
   };
 }
 
@@ -122,7 +122,8 @@ function ensureArrays() {
   });
   if (!state.fitness) state.fitness = { measures: [], exercises: [] };
   if (!state.habits) state.habits = { items: [], log: {} };
-  if (!state.dream || typeof state.dream !== 'object') state.dream = { image: '', text: '' };
+  if (!state.dream || typeof state.dream !== 'object') state.dream = { image: '', text: '', en: '' };
+  if (!state.dream.en) state.dream.en = '';
   if (state.version == null) state.version = 1;
 }
 
@@ -679,7 +680,7 @@ function switchModule(key) {
   state.activeModule = key;
   // 多选状态属于单个视图，切换模块时清空，避免残留勾选框
   if (taskUI.multi.active) taskUI.multi = { view: null, active: false, sel: {} };
-  saveState();
+  saveLocal(); // activeModule 是浏览位置（UI 状态），只存本地，不推送云端、不标记待同步
   render();
   window.scrollTo(0, 0); // 切换模块时回到顶部（新页面视角）
 }
@@ -1067,14 +1068,15 @@ function renderDashboard() {
 
 /* ---------- 我的梦想板块 ---------- */
 function renderDream() {
-  const d = state.dream = state.dream || { image: '', text: '' };
+  const d = state.dream = state.dream || { image: '', text: '', en: '' };
   return `<div class="dream-wrap">
     <div class="dream-img" onclick="pickDreamImage()" title="点击添加 / 更换图片">
       ${d.image ? `<img src="${d.image}" alt="梦想">` : '<div class="dream-img-ph">📷<br><small>添加图片</small></div>'}
       ${d.image ? `<span class="dream-img-del" title="删除图片" onclick="event.stopPropagation();removeDreamImage()">✕</span>` : ''}
     </div>
     <div class="dream-text" onclick="editDreamText()" title="点击编辑激励语">
-      ${d.text ? `<span style="white-space:pre-wrap;">${escapeHtml(d.text)}</span>` : '<span class="muted">写下激励自己的话…</span>'}
+      <div class="dream-text-cn">${d.text ? `<span style="white-space:pre-wrap;">${escapeHtml(d.text)}</span>` : '<span class="muted">写下激励自己的话…</span>'}</div>
+      ${d.en ? `<div class="dream-text-en">${escapeHtml(d.en)}</div>` : ''}
     </div>
   </div>`;
 }
@@ -1125,13 +1127,16 @@ function removeDreamImage() {
 function editDreamText() {
   const m = document.getElementById('modalRoot');
   if (!m) return;
-  const d = state.dream = state.dream || { image: '', text: '' };
+  const d = state.dream = state.dream || { image: '', text: '', en: '' };
   m.innerHTML = `
     <div class="modal-mask" onclick="if(event.target===this)window.__dmClose()">
       <div class="modal" style="max-width:420px;">
-        <h3>✨ 激励自己的话</h3>
+        <h3>✨ 我的梦想</h3>
         <div class="modal-form">
-          <textarea class="input" id="dmText" rows="5" placeholder="每天看一遍，给自己打气…">${escapeHtml(d.text || '')}</textarea>
+          <label style="font-size:13px;font-weight:600;color:var(--text-2);">中文激励语</label>
+          <textarea class="input" id="dmText" rows="4" placeholder="每天看一遍，给自己打气…">${escapeHtml(d.text || '')}</textarea>
+          <label style="font-size:13px;font-weight:600;color:var(--text-2);">英文标语（可选，花体显示）</label>
+          <input class="input" id="dmEn" placeholder="如：Become who I want to be." value="${escapeHtml(d.en || '')}">
         </div>
         <div class="modal-actions">
           <button class="btn btn-ghost" onclick="window.__dmClose()">取消</button>
@@ -1142,9 +1147,10 @@ function editDreamText() {
   window.__dmClose = () => { m.innerHTML = ''; delete window.__dmClose; delete window.__dmSave; };
   window.__dmSave = () => {
     const ta = document.getElementById('dmText');
-    const val = ta ? (ta.value || '').trim() : '';
-    state.dream = state.dream || { image: '', text: '' };
-    state.dream.text = val;
+    const en = document.getElementById('dmEn');
+    state.dream = state.dream || { image: '', text: '', en: '' };
+    state.dream.text = ta ? (ta.value || '').trim() : '';
+    state.dream.en = en ? (en.value || '').trim() : '';
     saveState();
     window.__dmClose();
     renderDashboard();
@@ -1515,7 +1521,7 @@ function setProjField(pid, field, val) {
 }
 function selectProject(id) {
   state.selectedProjectId = id;
-  saveState();
+  saveLocal(); // 浏览位置只存本地
   renderProjects();
 }
 // 从概览"项目进度"跳转到项目页并定位到指定项目
@@ -1523,7 +1529,15 @@ function goProject(pid) {
   state.selectedProjectId = pid;
   state.activeModule = 'projects';
   if (taskUI.multi.active) taskUI.multi = { view: null, active: false, sel: {} };
-  saveState();
+  saveLocal(); // 浏览位置只存本地
+  render();
+  window.scrollTo(0, 0);
+}
+// 跳转到指定模块（绕过切换防抖，供搜索等明确跳转使用）
+function goModule(key) {
+  state.activeModule = key;
+  if (taskUI.multi.active) taskUI.multi = { view: null, active: false, sel: {} };
+  saveLocal();
   render();
   window.scrollTo(0, 0);
 }
@@ -1594,7 +1608,7 @@ function goSearchItem(i) {
   const r = (window.__lastSearchResults || [])[i];
   if (!r) return;
   if (r.go === 'project') goProject(r.id);
-  else switchModule(r.id);
+  else goModule(r.id);
   const gs = document.getElementById('globalSearch'); if (gs) gs.value = '';
   const ds = document.getElementById('drawerSearch'); if (ds) ds.value = '';
   const sr = document.getElementById('searchResults'); if (sr) { sr.innerHTML = ''; sr.style.display = 'none'; }
