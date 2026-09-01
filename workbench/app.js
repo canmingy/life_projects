@@ -704,6 +704,7 @@ function switchModule(key) {
   state.activeModule = key;
   // 多选状态属于单个视图，切换模块时清空，避免残留勾选框
   if (taskUI.multi.active) taskUI.multi = { view: null, active: false, sel: {} };
+  projDetailView = false; // 切模块时退出手机端"全屏项目详情"，回到列表视图
   saveLocal(); // activeModule 是浏览位置（UI 状态），只存本地，不推送云端、不标记待同步
   render();
   window.scrollTo(0, 0); // 切换模块时回到顶部（新页面视角）
@@ -1257,6 +1258,13 @@ function projProgress(p) {
 }
 
 let taskUI = { collapsed: {}, multi: { view: null, active: false, sel: {} } };
+// 手机端"点项目进入全屏详情"视图开关（纯 UI 状态，不参与同步/持久化）
+let projDetailView = false;
+// 判断当前是否移动端（与 mobile.css 的 820px 断点保持一致）
+function isMobile() {
+  if (typeof window.matchMedia === 'function') return window.matchMedia('(max-width: 820px)').matches;
+  return (typeof window.innerWidth === 'number') && window.innerWidth <= 820;
+}
 
 function statusOptions(sel) {
   return ['未开始', '进行中', '等待', '阻塞', '已完成']
@@ -1320,6 +1328,8 @@ function renderProjects() {
   }
   const sel = state.projects.find(p => p.id === state.selectedProjectId);
   const archOpen = taskUI.collapsed['__archive'] === true; // 默认折叠（undefined 视为折叠）
+  // 手机端：点项目后进入全屏详情视图（类似 Notion 的子页面）
+  const mobileFull = isMobile() && projDetailView && !!sel;
 
   const projCard = p => {
     const done = projDoneCount(p.id), total = projTotalCount(p.id);
@@ -1335,6 +1345,17 @@ function renderProjects() {
       <div class="progress" style="margin-top:8px;"><div class="progress-fill" style="width:${projProgress(p)}%"></div></div>
     </div>`;
   };
+
+  if (mobileFull) {
+    main.innerHTML = `
+      <div class="proj-detail-full">
+        <div class="proj-detail-full-head">
+          <button class="btn btn-ghost btn-sm" onclick="backToProjectList()">← 返回项目列表</button>
+        </div>
+        ${renderProjectDetail(sel)}
+      </div>`;
+    return;
+  }
 
   main.innerHTML = `
     <div class="view-head">
@@ -1626,7 +1647,13 @@ function setProjField(pid, field, val) {
 }
 function selectProject(id) {
   state.selectedProjectId = id;
+  if (isMobile()) projDetailView = true; // 手机端点项目 → 进入全屏详情
   saveLocal(); // 浏览位置只存本地
+  renderProjects();
+}
+// 手机端：从全屏详情返回项目列表
+function backToProjectList() {
+  projDetailView = false;
   renderProjects();
 }
 // 从概览"项目进度"跳转到项目页并定位到指定项目
@@ -1634,6 +1661,7 @@ function goProject(pid) {
   state.selectedProjectId = pid;
   state.activeModule = 'projects';
   if (taskUI.multi.active) taskUI.multi = { view: null, active: false, sel: {} };
+  if (isMobile()) projDetailView = true; // 手机端跳转也进全屏详情
   saveLocal(); // 浏览位置只存本地
   render();
   window.scrollTo(0, 0);
