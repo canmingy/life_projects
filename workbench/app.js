@@ -1242,6 +1242,45 @@ function projStatusOptions(sel) {
   return ['进行中', '待启动', '已完成', '暂停']
     .map(s => `<option ${s === sel ? 'selected' : ''}>${s}</option>`).join('');
 }
+function labelOptions(cur) {
+  const presets = ['长期', '短期', '重要', 'A1主攻', '普通'];
+  let opts = '<option value="">-- 选择标签 --</option>';
+  presets.forEach(p => opts += `<option value="${p}" ${cur===p?'selected':''}>${p}</option>`);
+  if (cur && !presets.includes(cur)) opts += `<option value="${escapeHtml(cur)}" selected>${escapeHtml(cur)}（自定义）</option>`;
+  return opts;
+}
+function onLabelChange(pid, sel) {
+  if (sel.value === '__new__') {
+    sel.value = state.projects.find(x=>x.id===pid)?.label || '';
+    editLabelCustom(pid);
+  } else {
+    setProjField(pid, 'label', sel.value);
+  }
+}
+function editLabelCustom(pid) {
+  const p = state.projects.find(x=>x.id===pid); if (!p) return;
+  const m = document.getElementById('modalRoot');
+  if (!m) return;
+  m.innerHTML = `
+    <div class="modal-mask" onclick="if(event.target===this)window.__lcClose()">
+      <div class="modal" style="max-width:360px;">
+        <h3>✏️ 自定义标签</h3>
+        <div class="modal-form">
+          <input class="input" id="lcInput" placeholder="输入新标签" value="${escapeHtml(p.label || '')}" autofocus>
+        </div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" onclick="window.__lcClose()">取消</button>
+          <button class="btn btn-primary" onclick="window.__lcSave()">保存</button>
+        </div>
+      </div>
+    </div>`;
+  window.__lcClose = () => { m.innerHTML = ''; delete window.__lcClose; delete window.__lcSave; };
+  window.__lcSave = () => {
+    const inp = document.getElementById('lcInput');
+    setProjField(pid, 'label', inp ? inp.value.trim() : '');
+    window.__lcClose();
+  };
+}
 function quadOptions2(sel) {
   return [['', '（无）'], ['q1', '紧急且重要'], ['q2', '不紧急但重要'],
           ['q3', '紧急不重要'], ['q4', '不紧急不重要']]
@@ -1384,16 +1423,13 @@ function renderProjectDetail(p) {
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <span class="pc-code" style="font-size:18px;font-weight:800;font-family:Consolas,monospace;">${escapeHtml(p.code)}</span>
-          <input class="input pd-label-input" list="labelPresets" value="${escapeHtml(p.label || '')}" onchange="setProjField('${p.id}','label',this.value)" placeholder="标签（长期/短期/重要）" title="项目标签，可自定义">
+          <select class="exec-sel" onchange="onLabelChange('${p.id}', this)" title="项目标签（可点击选择预置或自定义）">${labelOptions(p.label)}<option value="__new__">✏️ 自定义...</option></select>
           <select class="exec-sel" onchange="setProjField('${p.id}','status',this.value)" title="项目状态">${projStatusOptions(p.status)}</select>
           ${p.blocked ? '<span class="badge b-red">阻塞</span>' : ''}
         </div>
         <button class="btn btn-danger-ghost btn-sm" onclick="delProject('${p.id}')">删除项目</button>
       </div>
       <input class="input" value="${escapeHtml(p.description || '')}" onchange="setProjField('${p.id}','description',this.value)" placeholder="项目简介（可选）" style="margin-bottom:10px;">
-      <datalist id="labelPresets">
-        <option value="长期"></option><option value="短期"></option><option value="重要"></option><option value="A1主攻"></option><option value="普通"></option>
-      </datalist>
 
       <div class="proj-info">
         <label>当前阶段<input class="input" value="${escapeHtml(p.phase || '')}" onchange="setProjField('${p.id}','phase',this.value)" placeholder="如 数据分析确认"></label>
