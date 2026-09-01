@@ -1366,8 +1366,8 @@ function initProjectSortable() {
     chosenClass: 'proj-card-chosen',
     dragClass: 'proj-card-dragging',
     forceFallback: false,
-    delay: 0,
-    delayOnTouchOnly: true,
+    delay: 300,           // 长按 300ms 才进入拖拽，避免"滑动页面"被误判为"拖动排序"
+    delayOnTouchOnly: true, // 仅在触摸设备（手机/触屏）需长按；鼠标拖拽与滚轮不冲突，保持立即拖拽
     onEnd: function(evt) {
       if (evt.oldIndex === evt.newIndex) return;
       const arr = state.projects.filter(p => p.status !== '已完成');
