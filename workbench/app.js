@@ -407,6 +407,24 @@ function applySyncStatus() {
   if (foot) foot.className = 'sidebar-foot' + (cls ? ' sync-' + cls : '');
 }
 
+/* ---------- 侧边栏时钟（精确到秒） ---------- */
+function updateSidebarClock() {
+  const d = new Date();
+  const y = d.getFullYear(), m = d.getMonth() + 1, day = d.getDate();
+  const days = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  const dateText = `${y}年${String(m).padStart(2, '0')}月${String(day).padStart(2, '0')}日 ${days[d.getDay()]}`;
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  const timeText = `${hh}:${mm}:${ss}`;
+  [['clockDate', 'clockTime'], ['clockDateDrawer', 'clockTimeDrawer']].forEach(([did, tid]) => {
+    const de = document.getElementById(did);
+    const te = document.getElementById(tid);
+    if (de) de.textContent = dateText;
+    if (te) te.textContent = timeText;
+  });
+}
+
 let authTab = 'login';
 function openAuthModal() {
   const m = document.getElementById('authModal');
@@ -3819,6 +3837,8 @@ function init() {
   loadLocal();
   loadOfflinePending(); // 恢复离线未同步标记（防止刷新后 pull 覆盖本地改动）
   loadTheme(); // 恢复深色/浅色偏好
+  updateSidebarClock(); // 启动时先更新一次时钟
+  setInterval(updateSidebarClock, 1000); // 每秒更新
   initSync().then(() => {
     renderAuthArea();
     render();

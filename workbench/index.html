@@ -30,6 +30,10 @@
           <div class="brand-sub">Life Projects</div>
         </div>
       </div>
+      <div class="sidebar-clock">
+        <div class="clock-date" id="clockDate">—</div>
+        <div class="clock-time" id="clockTime">--:--:--</div>
+      </div>
       <div class="search-wrap">
         <input class="search-input" id="globalSearch" placeholder="🔍 搜索项目 / 任务 / 笔记 / 文献…" autocomplete="off" oninput="renderSearchResults()" onfocus="renderSearchResults()">
         <div class="search-results" id="searchResults"></div>
@@ -49,6 +53,10 @@
   <div class="drawer-mask" id="drawerMask" onclick="if(event.target===this)closeDrawer()">
     <div class="drawer-panel" id="drawerPanel">
       <div id="drawerAuth" class="drawer-auth"></div>
+      <div class="sidebar-clock drawer-clock">
+        <div class="clock-date" id="clockDateDrawer">—</div>
+        <div class="clock-time" id="clockTimeDrawer">--:--:--</div>
+      </div>
     </div>
   </div>
 
