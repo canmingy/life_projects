@@ -946,3 +946,11 @@ html[data-theme="dark"] .dream-text-en { color: #E0B872; }
 /* 项目详情中的 code和中文名编辑框（保持原视觉风格） */
 .pc-code-input { font-family: Consolas, monospace; font-weight: 800; font-size: 16px; width: 140px; padding: 6px 10px; }
 .pc-title-input { font-weight: 700; font-size: 15px; width: 200px; padding: 6px 10px; }
+
+/* 习惯：删除 / 改名按钮 */
+.ht-del { margin-left: auto; background: transparent; border: none; cursor: pointer; font-size: 14px; opacity: 0.45; padding: 0 2px; line-height: 1; }
+.ht-del:hover { opacity: 1; }
+.hname-text { cursor: pointer; }
+.hname-text:hover { color: var(--orange); text-decoration: underline dotted; }
+.hdel { background: transparent; border: none; cursor: pointer; font-size: 12px; opacity: 0.4; margin-left: 6px; padding: 0; line-height: 1; }
+.hdel:hover { opacity: 1; color: var(--red); }

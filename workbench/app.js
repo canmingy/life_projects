@@ -19,7 +19,9 @@ const SYNC_CONFIGURED = /^https?:\/\//.test(SUPABASE_URL);
 
 let sb = null;            // supabase client
 let syncUser = null;      // 当前登录用户
-let suppressRemote = false;
+// 推送后的静默窗口：忽略"自己推送触发"的实时回传（其事件会延迟到达，
+// 若不忽略会在 push 完成后又 pull 覆盖本地，导致编辑中输入的内容消失、页面跳动）
+let suppressRemoteUntil = 0;
 let pushTimer = null;
 
 /* ---------- 常量 ---------- */
@@ -313,7 +315,8 @@ function doPendingSync() { queuePush(); }
 
 async function pushRemote() {
   if (!sb || !syncUser) return;
-  suppressRemote = true;
+  // 推送后 2.5 秒内忽略实时回传，避免"自己 push 触发的事件延迟到达→又 pull 覆盖本地"
+  suppressRemoteUntil = Date.now() + 2500;
   let error = null;
   try {
     const res = await sb
@@ -321,7 +324,6 @@ async function pushRemote() {
       .upsert({ user_id: syncUser.id, data: state, updated_at: new Date().toISOString() });
     error = res.error || null;
   } catch (e) { error = e; }
-  suppressRemote = false;
   if (error) {
     setOfflinePending(true);
     setSyncStatus('离线，改动已存本地', 'err');
@@ -340,11 +342,15 @@ function subscribeRemote() {
       event: '*', schema: 'public', table: 'workbench_state',
       filter: `user_id=eq.${syncUser.id}`,
     }, async () => {
-      if (suppressRemote) return;
+      if (Date.now() < suppressRemoteUntil) return;
       if (offlinePending) return; // 本地有未同步改动时不拉取远程，避免覆盖
+      const before = JSON.stringify(state);
       await pullRemote();
-      render();
-      setSyncStatus('已同步（远程更新）', 'ok');
+      // 只有数据真的变了才重绘；否则（自己 push 的回传）不 render，避免打断正在编辑的输入
+      if (JSON.stringify(state) !== before) {
+        render();
+        setSyncStatus('已同步（远程更新）', 'ok');
+      }
     })
     .subscribe();
 }
@@ -1516,7 +1522,8 @@ function setTaskStatus(id, status) {
   t.status = status;
   t.doneDate = status === '已完成' ? todayStr() : null;
   saveState();
-  if (status === '已完成' && !wasDone && t.type === 'project') { openProgressModal(id); return; }
+  // 只有执行任务（level 3）完成时才弹进度日志；任务组/个人任务不弹
+  if (status === '已完成' && !wasDone && t.type === 'project' && t.level === 3) { openProgressModal(id); return; }
   if (state.activeModule === 'projects') renderProjects(); else render();
 }
 function setTaskField(id, field, val) {
@@ -1538,7 +1545,11 @@ function renameTask(id, name) {
 }
 async function delTask(id) {
   if (!(await confirmDialog('删除该任务？若它是任务组，其下执行任务也会一并删除。', { icon: '🗑️' }))) return;
-  state.tasks = state.tasks.filter(x => x.id !== id && x.parentId !== id);
+  // 收集将被删除的任务 id（任务本身 + 其子任务），用于同步清理关联的进度日志
+  const delIds = new Set([id]);
+  state.tasks.forEach(t => { if (t.parentId === id) delIds.add(t.id); });
+  state.tasks = state.tasks.filter(x => !delIds.has(x.id));
+  state.progressLogs = state.progressLogs.filter(l => !delIds.has(l.taskId));
   delete taskUI.collapsed[id];
   saveState();
   if (state.activeModule === 'projects') renderProjects(); else render();
@@ -1562,7 +1573,11 @@ async function multiDelete(view) {
   const gCnt = ids.filter(id => state.tasks.some(t => t.id === id && t.level === 2)).length;
   const willDel = state.tasks.filter(x => ids.includes(x.id) || ids.includes(x.parentId)).length;
   if (!(await confirmDialog(`删除选中的 ${ids.length} 项（${gCnt ? '含 ' + gCnt + ' 个任务组，' : ''}共影响 ${willDel} 条任务）？此操作不可撤销。`, { icon: '🗑️' }))) return;
-  state.tasks = state.tasks.filter(x => !ids.includes(x.id) && !ids.includes(x.parentId));
+  // 收集将被删除的任务 id（选中项 + 其子任务），用于同步清理关联的进度日志
+  const delIds = new Set(ids);
+  state.tasks.forEach(t => { if (ids.includes(t.parentId)) delIds.add(t.id); });
+  state.tasks = state.tasks.filter(x => !delIds.has(x.id));
+  state.progressLogs = state.progressLogs.filter(l => !delIds.has(l.taskId));
   ids.forEach(id => delete taskUI.collapsed[id]);
   taskUI.multi = { view: null, active: false, sel: {} };
   saveState();
@@ -2017,17 +2032,21 @@ function renderCalendar() {
       <div id="dayEvents">
         ${dayPlan.length ? `<div class="cal-sec-title">🟧 计划执行（${dayPlan.length}）</div>` + dayPlan.map(t => {
           const p = state.projects.find(x => x.id === t.projectId);
+          const done = t.status === '已完成';
           return `<div class="fin-row">
+            <span class="q-check" style="margin:0;${done ? 'background:var(--orange);border-color:var(--orange);' : ''}" onclick="setTaskStatus('${t.id}','${done ? '未开始' : '已完成'}')" title="标记完成"></span>
             <span class="badge b-orange">${p ? escapeHtml(p.code) : '个人'}</span>
-            <div style="flex:1;"><div class="fr-note ${t.status === '已完成' ? 'done' : ''}">${escapeHtml(t.name)}</div></div>
+            <div style="flex:1;cursor:pointer;" onclick="${t.projectId ? `goProject('${t.projectId}')` : `goModule('todos')`}" title="查看任务详情"><div class="fr-note ${done ? 'done' : ''}">${escapeHtml(t.name)}</div></div>
             <button class="fr-del" onclick="delTask('${t.id}')">🗑️</button>
           </div>`;
         }).join('') : ''}
         ${dayDue.length ? `<div class="cal-sec-title">🔴 截止（${dayDue.length}）</div>` + dayDue.map(t => {
           const p = state.projects.find(x => x.id === t.projectId);
+          const done = t.status === '已完成';
           return `<div class="fin-row">
+            <span class="q-check" style="margin:0;${done ? 'background:var(--orange);border-color:var(--orange);' : ''}" onclick="setTaskStatus('${t.id}','${done ? '未开始' : '已完成'}')" title="标记完成"></span>
             <span class="badge b-red">${p ? escapeHtml(p.code) : '个人'}</span>
-            <div style="flex:1;"><div class="fr-note ${t.status === '已完成' ? 'done' : ''}">${escapeHtml(t.name)}</div></div>
+            <div style="flex:1;cursor:pointer;" onclick="${t.projectId ? `goProject('${t.projectId}')` : `goModule('todos')`}" title="查看任务详情"><div class="fr-note ${done ? 'done' : ''}">${escapeHtml(t.name)}</div></div>
             <button class="fr-del" onclick="delTask('${t.id}')">🗑️</button>
           </div>`;
         }).join('') : ''}
@@ -2038,10 +2057,13 @@ function renderCalendar() {
         </div>`).join('') : ''}
         ${!dayPlan.length && !dayDue.length && !dayEvents.length ? '<div class="empty" style="padding:18px;">这一天还没有安排</div>' : ''}
       </div>
-        <div style="display:flex;gap:8px;margin-top:14px;">
+        <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
           <input type="time" class="select" id="evtTime">
-          <input type="text" class="input" id="evtTitle" placeholder="日程内容…" maxlength="120">
+          <input type="text" class="input" id="evtTitle" placeholder="日程内容…" maxlength="120" style="flex:1;min-width:120px;">
           <button class="btn btn-ghost btn-sm" onclick="addEvent()">添加</button>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <input type="text" class="input" id="evtNote" placeholder="备注（可选，如地点 / 说明）" maxlength="200" style="flex:1;">
         </div>
       </div>
     </div>
@@ -2075,7 +2097,9 @@ function addEvent() {
   const title = document.getElementById('evtTitle').value.trim();
   if (!title) return;
   const time = document.getElementById('evtTime').value || '';
-  state.calEvents.push({ id: uid(), title, date: state.calSelDay, time, note: '' });
+  const noteEl = document.getElementById('evtNote');
+  const note = noteEl ? noteEl.value.trim() : '';
+  state.calEvents.push({ id: uid(), title, date: state.calSelDay, time, note });
   saveState();
   renderCalendar();
 }
@@ -2168,6 +2192,8 @@ function renderFinance() {
   const daily = exp.filter(x => x.cat !== 'big').reduce((s, x) => s + x.amount, 0);
   const big = exp.filter(x => x.cat === 'big').reduce((s, x) => s + x.amount, 0);
   const income = items.filter(x => x.type === 'income').reduce((s, x) => s + x.amount, 0);
+  // 动态收集用户实际用过的收入来源，筛选下拉随记录自动更新
+  const incomeSources = [...new Set(state.finance.filter(x => x.type === 'income' && x.source).map(x => x.source))];
   const catBadge = c => c === 'big' ? '<span class="badge b-teal">大额花销</span>' : '<span class="badge b-orange">日常花销</span>';
 
   main.innerHTML = `
@@ -2187,9 +2213,7 @@ function renderFinance() {
         </select>
         <select class="select" id="finSrcF" style="width:135px;" onchange="finApplyFilter()">
           <option value="all" ${f.src === 'all' ? 'selected' : ''}>收入：全部来源</option>
-          <option value="爸爸" ${f.src === '爸爸' ? 'selected' : ''}>收入：爸爸</option>
-          <option value="妈妈" ${f.src === '妈妈' ? 'selected' : ''}>收入：妈妈</option>
-          <option value="其他" ${f.src === '其他' ? 'selected' : ''}>收入：其他</option>
+          ${incomeSources.map(s => `<option value="${escapeHtml(s)}" ${f.src === s ? 'selected' : ''}>收入：${escapeHtml(s)}</option>`).join('')}
         </select>
         <button class="btn btn-ghost btn-sm" onclick="finQuick('month')">本月</button>
         <button class="btn btn-ghost btn-sm" onclick="finQuick('3m')">近3月</button>
@@ -2488,10 +2512,11 @@ function renderHabits() {
       <div class="habit-today">
         ${state.habits.items.map(h => {
           const done = state.habits.log[today] && state.habits.log[today][h.id];
-          return `<div class="habit-today-item ${done ? 'done' : ''}" onclick="toggleHabitToday('${h.id}')">
-            <div class="ht-check"></div>
-            <span class="ht-name">${escapeHtml(h.name)}</span>
-            <span class="ht-check-label">${done ? '已完成 ✓' : '点击完成'}</span>
+          return `<div class="habit-today-item ${done ? 'done' : ''}">
+            <div class="ht-check" onclick="toggleHabitToday('${h.id}')"></div>
+            <span class="ht-name" onclick="renameHabit('${h.id}')" title="点击改名">${escapeHtml(h.name)}</span>
+            <span class="ht-check-label" onclick="toggleHabitToday('${h.id}')">${done ? '已完成 ✓' : '点击完成'}</span>
+            <button class="ht-del" onclick="delHabit('${h.id}')" title="删除习惯">🗑️</button>
           </div>`;
         }).join('') || '<div class="empty">还没有习惯，点右上角添加</div>'}
       </div>
@@ -2509,7 +2534,7 @@ function renderHabits() {
               if (on) cnt++;
               return `<td><div class="hg-cell ${on ? 'on' : ''}" onclick="toggleHabitCell('${h.id}','${ds}')"></div></td>`;
             }).join('');
-            return `<tr><td class="hname">${escapeHtml(h.name)}</td><td class="hcnt">${cnt}/${daysInMonth}</td>${cells}</tr>`;
+            return `<tr><td class="hname"><span class="hname-text" onclick="renameHabit('${h.id}')" title="点击改名">${escapeHtml(h.name)}</span><button class="hdel" onclick="delHabit('${h.id}')" title="删除习惯">✕</button></td><td class="hcnt">${cnt}/${daysInMonth}</td>${cells}</tr>`;
           }).join('') || `<tr><td colspan="${dayArr.length + 2}" class="empty">暂无习惯</td></tr>`}
         </table>
       </div>
@@ -2544,6 +2569,21 @@ async function addHabit() {
   const name = await promptDialog('习惯名称（如 读书 / 冥想）：');
   if (!name) return;
   state.habits.items.push({ id: uid(), name: name.trim() });
+  saveState();
+  renderHabits();
+}
+async function renameHabit(id) {
+  const h = state.habits.items.find(x => x.id === id); if (!h) return;
+  const name = await promptDialog('修改习惯名称：', h.name);
+  if (!name || !name.trim()) return;
+  h.name = name.trim();
+  saveState();
+  renderHabits();
+}
+async function delHabit(id) {
+  if (!(await confirmDialog('删除该习惯？其所有打卡记录也会一并清除。', { icon: '🗑️' }))) return;
+  state.habits.items = state.habits.items.filter(h => h.id !== id);
+  Object.keys(state.habits.log).forEach(d => { delete state.habits.log[d][id]; });
   saveState();
   renderHabits();
 }

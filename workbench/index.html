@@ -16,8 +16,9 @@
   <meta name="apple-mobile-web-app-title" content="Canming's">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="mobile.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.1.0/style.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/great-vibes@5.0.0/index.css">
+  <!-- 字体非阻塞加载：先渲染页面（系统字体），字体下载完成后再替换，避免国内 jsdelivr 慢导致白屏几十秒 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.1.0/style.css" media="print" onload="this.media='all'">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fontsource/great-vibes@5.0.0/index.css" media="print" onload="this.media='all'">
 </head>
 <body>
   <div class="app">
@@ -57,8 +58,9 @@
     <button onclick="doPendingSync()">立即同步</button>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+  <!-- 本地化依赖：不依赖国内慢的 jsdelivr，走 GitHub Pages 加载 -->
+  <script src="lib/supabase.js"></script>
+  <script src="lib/Sortable.min.js"></script>
   <div id="authModal"></div>
   <div id="modalRoot"></div>
   <script src="app.js"></script>

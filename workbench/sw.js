@@ -4,7 +4,7 @@
    * 策略：网络优先，失败回退缓存；离线时页面与最近数据可查看
    * 数据同步逻辑完全由 app.js 控制（离线不覆盖云端，恢复网络提示）
    ============================================================ */
-const CACHE_NAME = 'canming-workbench-v6';
+const CACHE_NAME = 'canming-workbench-v7';
 const ASSETS = [
   './',
   './index.html',
@@ -14,6 +14,8 @@ const ASSETS = [
   './share.html',
   './share.js',
   './share.css',
+  './lib/supabase.js',
+  './lib/Sortable.min.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
