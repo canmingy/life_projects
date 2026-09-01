@@ -820,7 +820,7 @@ function renderWeekPlanDash() {
         <select class="select" id="wkProject" onchange="refreshWeekProject()">${projOptions}</select>
         <button class="btn btn-primary btn-sm" onclick="addWeekTaskNew()">+ 添加</button>
       </div>
-      <div style="font-size:11px;color:var(--text-3);margin-top:8px;">最多 5 项，★ 为本周唯一主交付；周计划条目独立保存，不会进入今日待做。</div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:8px;">最多 7 项，★ 为本周唯一主交付；周计划条目独立保存，不会进入今日待做。</div>
     </div>
     ${histHtml}
   `;
@@ -863,7 +863,7 @@ function renderQuarterPlanDash() {
         <select class="select" id="qProject" onchange="refreshQuarterProject()">${projOptions}</select>
         <button class="btn btn-primary btn-sm" onclick="addQuarterRefNew()">+ 添加</button>
       </div>
-      <div style="font-size:11px;color:var(--text-3);margin-top:8px;">最多 5 项；自由条目：手动输入名称，选择所属项目或个人计划。</div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:8px;">最多 7 项；自由条目：手动输入名称，选择所属项目或个人计划。</div>
     </div>
     ${histHtml}
   `;
@@ -928,7 +928,7 @@ async function addWeekTaskNew() {
   const projectId = type === 'project' ? document.getElementById('wkProject').value : null;
   if (type === 'project' && !projectId) { await alertDialog('请先选择所属项目', { icon: '⚠️' }); return; }
   const w = getWeeklyPlan();
-  if ((w.items || []).length + w.taskIds.length >= 5) { await alertDialog('本周最多安排 5 项', { icon: '⚠️' }); return; }
+  if ((w.items || []).length + w.taskIds.length >= 7) { await alertDialog('本周最多安排 7 项', { icon: '⚠️' }); return; }
   w.items.push({ id: uid(), name, type, projectId, done: false });
   saveState(); render();
 }
@@ -957,7 +957,7 @@ async function addQuarterRefNew() {
   const projectId = type === 'project' ? document.getElementById('qProject').value : null;
   if (type === 'project' && !projectId) { await alertDialog('请先选择所属项目', { icon: '⚠️' }); return; }
   const qp = getQuarterlyPlan();
-  if (qp.refs.length >= 5) { await alertDialog('本季度最多安排 5 项', { icon: '⚠️' }); return; }
+  if (qp.refs.length >= 7) { await alertDialog('本季度最多安排 7 项', { icon: '⚠️' }); return; }
   qp.refs.push({ id: uid(), name, type, projectId });
   saveState(); render();
 }
@@ -1300,7 +1300,7 @@ function renderProjects() {
   const projCard = p => {
     const done = projDoneCount(p.id), total = projTotalCount(p.id);
     const act = p.id === state.selectedProjectId ? 'active' : '';
-    return `<div class="proj-card ${act}" onclick="selectProject('${p.id}')">
+    return `<div class="proj-card proj-card-item ${act}" data-project-id="${p.id}" onclick="selectProject('${p.id}')">
       <div class="pc-top">
         <span class="pc-code">${escapeHtml(p.code)}</span>
         <span class="badge b-orange">${escapeHtml(p.label)}</span>
@@ -1314,12 +1314,12 @@ function renderProjects() {
 
   main.innerHTML = `
     <div class="view-head">
-      <div><div class="view-title">项目</div><div class="view-sub">项目 → 任务组 → 执行任务（三级，数据唯一）</div></div>
+      <div><div class="view-title">项目</div><div class="view-sub">项目 → 任务组 → 执行任务（三级，数据唯一） · 拖动卡片可排序</div></div>
       <button class="btn btn-primary" onclick="addProject()">+ 新建项目</button>
     </div>
     <div class="proj-layout">
       <div class="proj-list">
-        ${active.map(projCard).join('') || '<div class="empty"><span class="emoji">📭</span>还没有进行中的项目</div>'}
+        <div class="proj-list-active">${active.map(projCard).join('') || '<div class="empty"><span class="emoji">📭</span>还没有进行中的项目</div>'}</div>
         ${archived.length ? `
           <div class="proj-archive-head" onclick="toggleProjectArchive()">
             📦 已归档（${archived.length}）<span class="tg-arrow">${archOpen ? '▾' : '▸'}</span>
@@ -1331,6 +1331,31 @@ function renderProjects() {
       </div>
     </div>
   `;
+  initProjectSortable();
+}
+function initProjectSortable() {
+  const el = document.querySelector('.proj-list-active');
+  if (!el || typeof Sortable === 'undefined') return;
+  Sortable.create(el, {
+    animation: 180,
+    ghostClass: 'proj-card-ghost',
+    chosenClass: 'proj-card-chosen',
+    dragClass: 'proj-card-dragging',
+    forceFallback: false,
+    delay: 0,
+    delayOnTouchOnly: true,
+    onEnd: function(evt) {
+      if (evt.oldIndex === evt.newIndex) return;
+      const arr = state.projects.filter(p => p.status !== '已完成');
+      const [moved] = arr.splice(evt.oldIndex, 1);
+      arr.splice(evt.newIndex, 0, moved);
+      // 按新顺序重写 state.projects：先 active（按新顺序），后 archived（保持原顺序）
+      const archivedIds = new Set(state.projects.filter(p => p.status === '已完成').map(p => p.id));
+      const archivedPart = state.projects.filter(p => archivedIds.has(p.id));
+      state.projects = arr.concat(archivedPart);
+      saveState();
+    }
+  });
 }
 function toggleProjectArchive() {
   taskUI.collapsed['__archive'] = !taskUI.collapsed['__archive'];
@@ -1422,14 +1447,15 @@ function renderProjectDetail(p) {
     <div class="card card-pad">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-          <span class="pc-code" style="font-size:18px;font-weight:800;font-family:Consolas,monospace;">${escapeHtml(p.code)}</span>
+          <input class="input pc-code-input" value="${escapeHtml(p.code)}" onchange="setProjField('${p.id}','code',this.value.trim())" maxlength="20" title="项目代号（点此修改）">
+          <input class="input pc-title-input" value="${escapeHtml(p.title || '')}" onchange="setProjField('${p.id}','title',this.value)" placeholder="项目中文名" maxlength="60" title="项目中文名（点此修改）">
           <select class="exec-sel" onchange="onLabelChange('${p.id}', this)" title="项目标签（可点击选择预置或自定义）">${labelOptions(p.label)}<option value="__new__">✏️ 自定义...</option></select>
           <select class="exec-sel" onchange="setProjField('${p.id}','status',this.value)" title="项目状态">${projStatusOptions(p.status)}</select>
           ${p.blocked ? '<span class="badge b-red">阻塞</span>' : ''}
         </div>
         <button class="btn btn-danger-ghost btn-sm" onclick="delProject('${p.id}')">删除项目</button>
       </div>
-      <input class="input" value="${escapeHtml(p.description || '')}" onchange="setProjField('${p.id}','description',this.value)" placeholder="项目简介（可选）" style="margin-bottom:10px;">
+      <textarea class="input" rows="2" onchange="setProjField('${p.id}','description',this.value)" placeholder="项目简介（选填）" style="width:100%;min-height:44px;margin-bottom:10px;resize:vertical;display:block;">${escapeHtml(p.description || '')}</textarea>
 
       <div class="proj-info">
         <label>当前阶段<input class="input" value="${escapeHtml(p.phase || '')}" onchange="setProjField('${p.id}','phase',this.value)" placeholder="如 数据分析确认"></label>
@@ -1671,7 +1697,7 @@ function addProject() {
         <h3>📁 新建项目</h3>
         <div class="modal-form">
           <input class="input" id="pfCode" placeholder="项目代号（必填，如 IOC_MDD）" maxlength="20">
-          <input class="input" id="pfTitle" placeholder="项目中文名（必填）" maxlength="40">
+          <input class="input" id="pfTitle" placeholder="项目中文名（选填）" maxlength="40">
           <input class="input" id="pfLabel" placeholder="标签（如 A1主攻 / 长期 / 重要）" value="普通" maxlength="20">
           <select class="select" id="pfStatus">
             <option>进行中</option><option>待启动</option><option>已完成</option><option>暂停</option>

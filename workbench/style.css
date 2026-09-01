@@ -935,3 +935,14 @@ html[data-theme="dark"] .dream-text-en { color: #E0B872; }
 /* 数据备份提醒 */
 .backup-remind { padding: 10px 14px; margin-bottom: 14px; background: var(--amber-light); border: 1px solid var(--amber); color: var(--amber); border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; cursor: pointer; }
 .backup-remind:hover { opacity: 0.85; }
+
+/* 项目卡片拖拽排序 */
+.proj-card-item { cursor: grab; user-select: none; -webkit-user-select: none; touch-action: pan-y; }
+.proj-card-item:active { cursor: grabbing; }
+.proj-card-chosen { background: var(--orange-lighter) !important; box-shadow: 0 4px 12px rgba(249,115,22,0.18); }
+.proj-card-ghost { opacity: 0.35; background: var(--orange-lighter) !important; border: 2px dashed var(--orange); }
+.proj-card-dragging { box-shadow: 0 10px 24px rgba(0,0,0,0.15); transform: rotate(2deg); cursor: grabbing !important; }
+
+/* 项目详情中的 code和中文名编辑框（保持原视觉风格） */
+.pc-code-input { font-family: Consolas, monospace; font-weight: 800; font-size: 16px; width: 140px; padding: 6px 10px; }
+.pc-title-input { font-weight: 700; font-size: 15px; width: 200px; padding: 6px 10px; }
