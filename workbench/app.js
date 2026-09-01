@@ -909,7 +909,7 @@ function dashTaskRow(t) {
   const p = state.projects.find(x => x.id === t.projectId);
   return `<div class="dash-task ${done ? 'done' : ''}">
     <span class="q-check" style="margin:0;${done ? 'background:var(--orange);border-color:var(--orange);' : ''}" onclick="setTaskStatus('${t.id}','${done ? '未开始' : '已完成'}')"></span>
-    <span class="dash-task-name" style="${done ? 'text-decoration:line-through;color:var(--text-3);' : ''}">${escapeHtml(t.name)}</span>
+    <span class="dash-task-name" style="${done ? 'text-decoration:line-through;color:var(--text-3);' : ''} cursor:pointer;" onclick="${t.projectId ? `goProject('${t.projectId}')` : `goModule('todos')`}" title="查看任务详情">${escapeHtml(t.name)}</span>
     ${quadBadge(t.quad)}
     ${p ? `<span class="badge b-orange" style="margin-left:auto;font-size:10px;">${escapeHtml(p.code)}</span>` : ''}
   </div>`;
@@ -973,6 +973,15 @@ function focusPlanAdd(which) {
   if (sel) setTimeout(() => sel.focus(), 120);
 }
 
+// 备份提醒：从未备份或超过 7 天未备份时，在概览顶部提示
+function backupReminder() {
+  const last = state.lastBackup;
+  if (!last) return `<div class="backup-remind" onclick="goModule('backup')">⚠️ 你还没有备份过数据，点这里立即备份 →</div>`;
+  const days = Math.floor((Date.now() - last) / 86400000);
+  if (days >= 7) return `<div class="backup-remind" onclick="goModule('backup')">⚠️ 已 ${days} 天未备份数据，点这里去备份 →</div>`;
+  return '';
+}
+
 function renderDashboard() {
   const main = document.getElementById('main');
   const [geo, greet] = greeting();
@@ -986,6 +995,7 @@ function renderDashboard() {
   const projOptions = state.projects.map(p => `<option value="${p.id}">${escapeHtml(p.code)}</option>`).join('');
 
   main.innerHTML = `
+    ${backupReminder()}
     <div class="view-head">
       <div>
         <div class="view-title">${geo} ${greet}，Canming</div>
@@ -1011,7 +1021,7 @@ function renderDashboard() {
           const done = t.status === '已完成';
           return `<div class="dash-list-item">
             <span class="q-check" style="margin:0;${done ? 'background:var(--orange);border-color:var(--orange);' : ''}" onclick="toggleTodo('${t.id}')"></span>
-            <span style="${done ? 'text-decoration:line-through;color:var(--text-3);' : ''} flex:1;">${escapeHtml(t.name)}</span>
+            <span style="${done ? 'text-decoration:line-through;color:var(--text-3);' : ''} flex:1;cursor:pointer;" onclick="${t.projectId ? `goProject('${t.projectId}')` : `goModule('todos')`}" title="查看任务详情">${escapeHtml(t.name)}</span>
             ${quadBadge(t.quad)}
             ${p ? `<span class="badge b-orange">${escapeHtml(p.code)}</span>` : '<span class="badge b-gray">个人</span>'}
             <button class="dash-del" title="删除" onclick="delTask('${t.id}')">🗑️</button>

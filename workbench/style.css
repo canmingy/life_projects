@@ -931,3 +931,7 @@ html[data-theme="dark"] .dream-text-en { color: #E0B872; }
 /* 概览"项目进度"树的字体层级：项目代号最大、任务组居中、任务最小 */
 .dp-head .pc-code { font-size: 15px; font-weight: 800; }
 .dash-task-name { font-size: 12.5px; }
+
+/* 数据备份提醒 */
+.backup-remind { padding: 10px 14px; margin-bottom: 14px; background: var(--amber-light); border: 1px solid var(--amber); color: var(--amber); border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; cursor: pointer; }
+.backup-remind:hover { opacity: 0.85; }
