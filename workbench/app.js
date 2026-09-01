@@ -127,6 +127,11 @@ function ensureArrays() {
   if (!state.dream || typeof state.dream !== 'object') state.dream = { image: '', text: '', en: '' };
   if (!state.dream.en) state.dream.en = '';
   if (state.version == null) state.version = 1;
+  // 补任务新字段：mit（今日重点）+ depth（深度/浅度精力类型）
+  (state.tasks || []).forEach(t => {
+    if (t.mit === undefined) t.mit = false;
+    if (t.depth === undefined) t.depth = '';
+  });
 }
 
 /* 旧结构自动迁移：projects.subtasks -> tasks；todos -> tasks；events -> calEvents
@@ -1015,7 +1020,8 @@ function renderDashboard() {
   const waitBlock = state.tasks.filter(t => t.status === '等待' || t.status === '阻塞').length;
   const doneToday = state.tasks.filter(t => t.doneDate === todayStr()).length;
 
-  const todayTodos = todayTasks();
+  const todayTodos = todayTasks().sort((a, b) => (b.mit ? 1 : 0) - (a.mit ? 1 : 0)); // 今日重点(MIT)置顶
+  const mitTasks = todayTodos.filter(t => t.mit && t.status !== '已完成');
   const unschedCount = unscheduledTasks().length;
   const projOptions = state.projects.map(p => `<option value="${p.id}">${escapeHtml(p.code)}</option>`).join('');
 
@@ -1035,6 +1041,21 @@ function renderDashboard() {
       <div class="stat green"><span class="stat-ico">🏁</span><div class="stat-val">${doneToday}</div><div class="stat-label">今日已完成</div></div>
     </div>
 
+    <div class="card card-pad" style="margin-top:16px;${mitTasks.length ? 'border-color:var(--orange);' : ''}">
+      <div class="card-head" style="padding:0 0 12px;border:none;display:flex;justify-content:space-between;align-items:center;">
+        <h3>🎯 今日重点</h3>
+        <span style="font-size:12px;color:var(--text-3);">标 ★ 的任务 · 建议 ≤3 件</span>
+      </div>
+      ${mitTasks.length ? mitTasks.map(t => {
+        const p = state.projects.find(x => x.id === t.projectId);
+        return `<div class="dash-list-item mit-item">
+          <span class="q-check" style="margin:0;" onclick="toggleTodo('${t.id}')"></span>
+          <span style="flex:1;cursor:pointer;font-weight:700;" onclick="${t.projectId ? `goProject('${t.projectId}')` : `goModule('todos')`}" title="查看任务详情">★ ${escapeHtml(t.name)}</span>
+          ${p ? `<span class="badge b-orange">${escapeHtml(p.code)}</span>` : '<span class="badge b-gray">个人</span>'}
+        </div>`;
+      }).join('') : '<div style="color:var(--text-3);font-size:13px;padding:8px 0;">还没标记今日重点。在任务列表点 <b>☆</b> 标出今天最重要的几件事。</div>'}
+    </div>
+
     <div class="dash-3col">
       <div class="card card-pad">
         <div class="card-head" style="padding:0 0 12px;border:none;display:flex;justify-content:space-between;align-items:center;">
@@ -1044,9 +1065,9 @@ function renderDashboard() {
         ${todayTodos.length ? todayTodos.map(t => {
           const p = state.projects.find(x => x.id === t.projectId);
           const done = t.status === '已完成';
-          return `<div class="dash-list-item">
+          return `<div class="dash-list-item ${t.mit ? 'mit-item' : ''}">
             <span class="q-check" style="margin:0;${done ? 'background:var(--orange);border-color:var(--orange);' : ''}" onclick="toggleTodo('${t.id}')"></span>
-            <span style="${done ? 'text-decoration:line-through;color:var(--text-3);' : ''} flex:1;cursor:pointer;" onclick="${t.projectId ? `goProject('${t.projectId}')` : `goModule('todos')`}" title="查看任务详情">${escapeHtml(t.name)}</span>
+            <span style="${done ? 'text-decoration:line-through;color:var(--text-3);' : ''} flex:1;cursor:pointer;${t.mit ? 'font-weight:700;' : ''}" onclick="${t.projectId ? `goProject('${t.projectId}')` : `goModule('todos')`}" title="查看任务详情">${t.mit ? '★ ' : ''}${escapeHtml(t.name)}</span>
             ${quadBadge(t.quad)}
             ${p ? `<span class="badge b-orange">${escapeHtml(p.code)}</span>` : '<span class="badge b-gray">个人</span>'}
             <button class="dash-del" title="删除" onclick="delTask('${t.id}')">🗑️</button>
@@ -1411,11 +1432,15 @@ function execRow(t) {
   const done = t.status === '已完成';
   const mchk = (multiOn('proj') || multiOn('todos')) ? `<input type="checkbox" class="mchk" ${taskUI.multi.sel[t.id] ? 'checked' : ''} onchange="multiToggle('${t.id}')" title="选择此项">` : '';
   const noteTip = t.note ? `备注：${escapeHtml(t.note)}` : '添加备注';
-  return `<div class="exec ${done ? 'done' : ''}">
+  const depthIcon = t.depth === 'deep' ? '🔵' : t.depth === 'shallow' ? '⚪' : '◇';
+  const depthTip = t.depth === 'deep' ? '深度任务（需整块精力）· 点击切换' : t.depth === 'shallow' ? '浅度任务（碎片时间可做）· 点击切换' : '标记精力类型：深度/浅度';
+  return `<div class="exec ${done ? 'done' : ''} ${t.mit ? 'exec-mit' : ''}">
     ${mchk}
     <input type="checkbox" class="exec-chk" ${done ? 'checked' : ''} onchange="setTaskStatus('${t.id}', this.checked ? '已完成' : '未开始')">
+    <button class="st-del mit-btn ${t.mit ? 'on' : ''}" title="${t.mit ? '取消今日重点' : '标为今日重点（MIT）'}" onclick="toggleMit('${t.id}')">${t.mit ? '★' : '☆'}</button>
     <input class="exec-name-input" value="${escapeHtml(t.name)}" title="${noteTip}" onchange="renameTask('${t.id}', this.value)" maxlength="160">
     ${t.note ? `<span class="note-dot" title="${noteTip}">💬</span>` : ''}
+    <button class="st-del depth-btn" title="${depthTip}" onclick="toggleDepth('${t.id}')">${depthIcon}</button>
     <select class="exec-sel" onchange="setTaskField('${t.id}','status',this.value)">${statusOptions(t.status)}</select>
     <select class="exec-sel" onchange="setTaskField('${t.id}','quad',this.value)">${quadOptions2(t.quad)}</select>
     <input type="date" class="exec-date" value="${t.planDate || ''}" title="计划执行日期" onchange="setTaskField('${t.id}','planDate',this.value)">
@@ -1423,6 +1448,18 @@ function execRow(t) {
     <button class="st-del" title="${noteTip}" onclick="editTaskNote('${t.id}')">${t.note ? '💬' : '📝'}</button>
     <button class="st-del" title="删除" onclick="delTask('${t.id}')">🗑️</button>
   </div>`;
+}
+function toggleMit(id) {
+  const t = state.tasks.find(x => x.id === id); if (!t) return;
+  t.mit = !t.mit;
+  saveState();
+  if (state.activeModule === 'projects') renderProjects(); else render();
+}
+function toggleDepth(id) {
+  const t = state.tasks.find(x => x.id === id); if (!t) return;
+  t.depth = t.depth === 'deep' ? 'shallow' : (t.depth === 'shallow' ? '' : 'deep');
+  saveState();
+  if (state.activeModule === 'projects') renderProjects(); else render();
 }
 function editTaskNote(id) {
   const t = state.tasks.find(x => x.id === id); if (!t) return;
@@ -1873,7 +1910,7 @@ function renderTodos() {
   const quadOptions = quadOptions2('');
   const today = todayStr();
 
-  const todayL = applyTaskFilter(todayTasks());
+  const todayL = applyTaskFilter(todayTasks()).sort((a, b) => (b.mit ? 1 : 0) - (a.mit ? 1 : 0)); // 今日重点(MIT)置顶
   const odL = applyTaskFilter(overdueTasks());
   const upL = applyTaskFilter(upcomingTasks());
   const unschL = applyTaskFilter(unscheduledTasks());

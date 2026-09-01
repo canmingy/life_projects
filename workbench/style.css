@@ -964,3 +964,10 @@ html[data-theme="dark"] .dream-text-en { color: #E0B872; }
 /* 手机端全屏项目详情（点项目进入，类似 Notion 子页面） */
 .proj-detail-full-head { margin-bottom: 12px; display: flex; align-items: center; }
 .proj-detail-full-head .btn { font-size: 14px; }
+
+/* MIT 今日重点 + 深度/浅度 */
+.exec-mit { background: var(--orange-lighter) !important; }
+.mit-btn { color: var(--text-3); font-size: 15px; flex-shrink: 0; }
+.mit-btn.on { color: var(--amber); }
+.depth-btn { font-size: 12px; flex-shrink: 0; }
+.dash-list-item.mit-item { background: var(--orange-lighter); border-radius: var(--radius-sm); }
