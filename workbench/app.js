@@ -127,6 +127,7 @@ function ensureArrays() {
   if (!state.dream || typeof state.dream !== 'object') state.dream = { image: '', text: '', en: '' };
   if (!state.dream.en) state.dream.en = '';
   if (state.version == null) state.version = 1;
+  if (!state.todosView) state.todosView = 'time'; // 今日待做视图：time（按时间）/ project（按项目）
   // 补任务新字段：mit（今日重点）+ depth（深度/浅度精力类型）
   (state.tasks || []).forEach(t => {
     if (t.mit === undefined) t.mit = false;
@@ -1251,7 +1252,7 @@ function taskSection(title, arr) {
   if (!arr.length) return '';
   return `<div style="margin-bottom:18px;">
     <div class="sub-head">${title} <span class="muted">(${arr.length})</span></div>
-    ${arr.map(t => execRow(t)).join('')}
+    ${arr.map(t => execRow(t, true)).join('')}
   </div>`;
 }
 function projDoneCount(pid) {
@@ -1428,18 +1429,20 @@ function toggleProjectArchive() {
   renderProjects();
 }
 
-function execRow(t) {
+function execRow(t, showProj) {
   const done = t.status === '已完成';
   const mchk = (multiOn('proj') || multiOn('todos')) ? `<input type="checkbox" class="mchk" ${taskUI.multi.sel[t.id] ? 'checked' : ''} onchange="multiToggle('${t.id}')" title="选择此项">` : '';
   const noteTip = t.note ? `备注：${escapeHtml(t.note)}` : '添加备注';
   const depthIcon = t.depth === 'deep' ? '🔵' : t.depth === 'shallow' ? '⚪' : '◇';
   const depthTip = t.depth === 'deep' ? '深度任务（需整块精力）· 点击切换' : t.depth === 'shallow' ? '浅度任务（碎片时间可做）· 点击切换' : '标记精力类型：深度/浅度';
+  const p = showProj ? state.projects.find(x => x.id === t.projectId) : null;
   return `<div class="exec ${done ? 'done' : ''} ${t.mit ? 'exec-mit' : ''}">
     ${mchk}
     <input type="checkbox" class="exec-chk" ${done ? 'checked' : ''} onchange="setTaskStatus('${t.id}', this.checked ? '已完成' : '未开始')">
     <button class="st-del mit-btn ${t.mit ? 'on' : ''}" title="${t.mit ? '取消今日重点' : '标为今日重点（MIT）'}" onclick="toggleMit('${t.id}')">${t.mit ? '★' : '☆'}</button>
     <input class="exec-name-input" value="${escapeHtml(t.name)}" title="${noteTip}" onchange="renameTask('${t.id}', this.value)" maxlength="160">
     ${t.note ? `<span class="note-dot" title="${noteTip}">💬</span>` : ''}
+    ${showProj ? (p ? `<span class="badge b-orange" style="flex-shrink:0;" title="${escapeHtml(p.title || p.code)}">${escapeHtml(p.code)}</span>` : '<span class="badge b-gray" style="flex-shrink:0;">个人</span>') : ''}
     <button class="st-del depth-btn" title="${depthTip}" onclick="toggleDepth('${t.id}')">${depthIcon}</button>
     <select class="exec-sel" onchange="setTaskField('${t.id}','status',this.value)">${statusOptions(t.status)}</select>
     <select class="exec-sel" onchange="setTaskField('${t.id}','quad',this.value)">${quadOptions2(t.quad)}</select>
@@ -1903,12 +1906,58 @@ function taskFilterBar() {
 }
 function setTaskFilter(field, val) { state.taskFilter[field] = val; saveState(); render(); }
 function resetTaskFilter() { state.taskFilter = { project: 'all', quad: 'all', status: 'all', dueFrom: '', dueTo: '' }; saveState(); render(); }
+function setTodosView(v) { state.todosView = v; saveLocal(); renderTodos(); }
+
+// 按项目分组展示所有未完成任务（整体概览，不用一个个点进项目）
+function renderTodosByProject() {
+  const open = dailyTasks().filter(t => t.status !== '已完成');
+  let html = '';
+  state.projects.forEach(p => {
+    const ts = open.filter(t => t.projectId === p.id);
+    if (!ts.length) return;
+    html += `<div class="tp-group">
+      <div class="tp-head">
+        <span class="pc-code">${escapeHtml(p.code)}</span>
+        <span class="tp-title">${escapeHtml(p.title || '')}</span>
+        <span class="tp-count">${ts.length} 项待做</span>
+      </div>
+      ${ts.map(t => execRow(t, true)).join('')}
+    </div>`;
+  });
+  const personal = open.filter(t => t.type === 'personal');
+  if (personal.length) {
+    html += `<div class="tp-group">
+      <div class="tp-head"><span class="badge b-gray" style="font-weight:800;">个人</span><span class="tp-count">${personal.length} 项待做</span></div>
+      ${personal.map(t => execRow(t, true)).join('')}
+    </div>`;
+  }
+  if (!html) return '<div class="empty" style="padding:18px;"><span class="emoji">🎉</span>没有未完成的任务</div>';
+  return html;
+}
 
 function renderTodos() {
   const main = document.getElementById('main');
   const projOptions = state.projects.map(p => `<option value="${p.id}">${escapeHtml(p.code)}</option>`).join('');
   const quadOptions = quadOptions2('');
   const today = todayStr();
+  const view = state.todosView || 'time';
+
+  // 按项目视图：整体概览，不用一个个点进项目
+  if (view === 'project') {
+    main.innerHTML = `
+      <div class="view-head">
+        <div><div class="view-title">今日待做</div><div class="view-sub">按项目查看所有未完成任务，把握各项目的工作量</div></div>
+      </div>
+      <div class="todo-view-tabs">
+        <button class="tv-tab" onclick="setTodosView('time')">📅 按时间</button>
+        <button class="tv-tab active" onclick="setTodosView('project')">📁 按项目</button>
+      </div>
+      <div class="card card-pad" style="margin-top:16px;">
+        ${renderTodosByProject()}
+      </div>
+    `;
+    return;
+  }
 
   const todayL = applyTaskFilter(todayTasks()).sort((a, b) => (b.mit ? 1 : 0) - (a.mit ? 1 : 0)); // 今日重点(MIT)置顶
   const odL = applyTaskFilter(overdueTasks());
@@ -1919,6 +1968,11 @@ function renderTodos() {
     <div class="view-head">
       <div><div class="view-title">今日待做</div><div class="view-sub">仅显示计划日期 = 今天的任务；其余按 已逾期 / 即将到来 / 未排期 分组，数据同一份</div></div>
       ${multiBtn('todos')}
+    </div>
+
+    <div class="todo-view-tabs">
+      <button class="tv-tab active" onclick="setTodosView('time')">📅 按时间</button>
+      <button class="tv-tab" onclick="setTodosView('project')">📁 按项目</button>
     </div>
 
     ${taskFilterBar()}

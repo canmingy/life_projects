@@ -971,3 +971,14 @@ html[data-theme="dark"] .dream-text-en { color: #E0B872; }
 .mit-btn.on { color: var(--amber); }
 .depth-btn { font-size: 12px; flex-shrink: 0; }
 .dash-list-item.mit-item { background: var(--orange-lighter); border-radius: var(--radius-sm); }
+
+/* 今日待做：按时间/按项目 视图切换 + 按项目分组 */
+.todo-view-tabs { display: flex; gap: 8px; margin-bottom: 12px; }
+.tv-tab { padding: 8px 16px; border-radius: 999px; border: 1px solid var(--border); background: transparent; cursor: pointer; font-size: 13px; font-weight: 700; color: var(--text-2); }
+.tv-tab.active { background: var(--orange); color: #fff; border-color: var(--orange); }
+.tv-tab:hover:not(.active) { border-color: var(--orange); color: var(--orange); }
+.tp-group { margin-bottom: 22px; }
+.tp-head { display: flex; align-items: center; gap: 8px; padding: 8px 4px; border-bottom: 1px dashed var(--border); margin-bottom: 8px; }
+.tp-head .pc-code { font-size: 14px; font-weight: 800; }
+.tp-title { font-size: 13px; color: var(--text-2); }
+.tp-count { margin-left: auto; font-size: 12px; color: var(--text-3); font-weight: 700; }
